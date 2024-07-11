@@ -1,8 +1,8 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const axios = require('axios');
-require('dotenv').config();
 const { createAlchemyWeb3 } = require('@alch/alchemy-web3');
+const WebSocket = require('ws');
+require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -11,21 +11,20 @@ const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS;
 const USDT_DEPOSIT_ADDRESS = process.env.USDT_DEPOSIT_ADDRESS;
 
 const web3 = createAlchemyWeb3(ALCHEMY_API_URL);
-
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Endpoint to check server connectivity
-app.post('/ping', (req, res) => {
+app.get('/ping', (req, res) => {
   res.json({ success: true, message: 'Server is running and connected' });
 });
 
-// API Endpoint to receive USDT
-app.post('/receive', async (req, res) => {
+// API Endpoint to receive USDT transactions
+app.post('/receive-usdt', async (req, res) => {
   const { senderAddress, amount } = req.body;
 
   try {
-    // Check if senderAddress and amount are provided
+    // Validate sender address and amount
     if (!senderAddress || !amount) {
       return res.status(400).json({ success: false, message: 'Sender address and amount are required' });
     }
@@ -40,6 +39,7 @@ app.post('/receive', async (req, res) => {
 
     // Example: Process the transaction (optional)
     // Replace this with your actual logic to handle the incoming transaction
+    // For instance, you might want to save the transaction details to a database
 
     res.json({ success: true, message: `Received ${amount} USDT from ${senderAddress}` });
   } catch (error) {
@@ -48,17 +48,82 @@ app.post('/receive', async (req, res) => {
   }
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`App listening at http://localhost:${port}`);
+// Function to handle WebSocket connection and subscription
+function subscribeToTokenTransfers() {
+  const ws = new WebSocket(`${ALCHEMY_API_URL}/ws`);
+
+  ws.on('open', () => {
+    console.log('WebSocket connected');
+    
+    // Subscribe to USDT transfers to the deposit address
+    ws.send(JSON.stringify({
+      jsonrpc: "2.0",
+      method: "eth_subscribe",
+      params: [
+        "logs",
+        {
+          address: USDT_CONTRACT_ADDRESS,
+          topics: [null, web3.utils.padLeft(USDT_DEPOSIT_ADDRESS, 64)]
+        }
+      ],
+      id: 1
+    }));
+
+    // Ping-pong mechanism to keep the WebSocket connection alive
+    setInterval(() => {
+      ws.ping();
+    }, 5000); // Ping every 5 seconds
+  });
+
+  ws.on('pong', () => {
+    console.log('Received pong from server');
+  });
+
+  ws.on('message', (data) => {
+    console.log('WebSocket message received:', data);
+    const eventData = JSON.parse(data);
+    if (eventData.params && eventData.params.result) {
+      const { from, to, data: value } = eventData.params.result;
+
+      if (to.toLowerCase() === USDT_DEPOSIT_ADDRESS.toLowerCase()) {
+        const amount = web3.utils.fromWei(value, 'mwei'); // USDT has 6 decimals
+        console.log(`Received ${amount} USDT from ${from}`);
+        // Implement additional logic here to handle the received transaction
+        // For example, you can save the transaction details to a database
+      }
+    }
+  });
+
+  ws.on('close', (code, reason) => {
+    console.log(`WebSocket connection closed: ${code} - ${reason || 'No reason provided'}`);
+    if (code !== 1000) { // 1000 means a normal closure
+      // Attempt to reconnect after a delay
+      setTimeout(() => {
+        console.log('Reconnecting WebSocket...');
+        subscribeToTokenTransfers();
+      }, 10000); // Wait 10 seconds before reconnecting
+    }
+  });
+
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+    // Optionally, handle the error and attempt reconnection here
+  });
+}
+
+app.get('/', (req, res) => {
+  res.send('Server is running and connected!');
 });
+
+app.listen(port, () => {
+	console.log("Sever is listening on port 4000");
+  subscribeToTokenTransfers();
+})
 
 // Logging environment variables for verification
 console.log("ALCHEMY_API_URL:", ALCHEMY_API_URL);
 console.log("USDT_CONTRACT_ADDRESS:", USDT_CONTRACT_ADDRESS);
 console.log("USDT_DEPOSIT_ADDRESS:", USDT_DEPOSIT_ADDRESS);
-
-
 
 // const express = require('express');
 // const cors = require('cors');
