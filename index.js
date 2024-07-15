@@ -8,22 +8,20 @@ require('dotenv').config();
 const { createAlchemyWeb3 } = require('@alch/alchemy-web3');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
+const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS;
 const USDT_DEPOSIT_ADDRESS = process.env.USDT_DEPOSIT_ADDRESS;
-const SENDER_ADDRESS = process.env.SENDER_ADDRESS; // Replace with your sender address
-const SENDER_PRIVATE_KEY = process.env.SENDER_PRIVATE_KEY; // Replace with your private key
-const RECEIVER_ADDRESS = process.env.RECEIVER_ADDRESS; // Replace with your receiver address
+const SENDER_ADDRESS = process.env.SENDER_ADDRESS;
+const SENDER_PRIVATE_KEY = process.env.SENDER_PRIVATE_KEY;
+const RECEIVER_ADDRESS = process.env.RECEIVER_ADDRESS;
 
 const web3 = createAlchemyWeb3(ALCHEMY_API_URL);
 
 // Setup logger
 const logger = winston.createLogger({
   level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
+  format: winston.format.json(),
   transports: [
     new winston.transports.Console(),
     new winston.transports.File({ filename: 'server.log' })
@@ -91,6 +89,18 @@ async function handleNewTransaction(transaction) {
       const receipt = await web3.eth.getTransactionReceipt(transaction.hash);
       logger.info(`Transaction receipt: ${JSON.stringify(receipt)}`);
 
+      // Log the transaction details
+      const logEntry = `
+        Transaction Hash: ${transaction.hash}
+        From: ${transaction.from}
+        To: ${transaction.to}
+        Value: ${web3.utils.fromWei(transaction.value, 'ether')} ETH
+        Block Number: ${transaction.blockNumber}
+        Timestamp: ${new Date().toISOString()}
+      `;
+
+      console.log(logEntry);
+
       // Further processing can be done here
     } catch (error) {
       logger.error(`Error fetching transaction receipt: ${error.message}`);
@@ -115,26 +125,37 @@ web3.eth.subscribe('pendingTransactions', async (error, transactionHash) => {
   }
 });
 
-// Function to send a test transaction
+// Function to send a test USDT transaction
 async function sendTestTransaction() {
   const nonce = await web3.eth.getTransactionCount(SENDER_ADDRESS, 'latest');
-  
+
   const transaction = {
     'to': RECEIVER_ADDRESS,
-    'value': web3.utils.toWei('0.01', 'ether'),
+    'value': '0', // Value should be 0 for ERC-20 token transfer
     'gas': 2000000,
     'nonce': nonce,
-    'chainId': 5 // Use 5 for Goerli testnet, 3 for Ropsten, 4 for Rinkeby, 42 for Kovan, 11155111 for Sepolia
+    'data': web3.eth.abi.encodeFunctionCall({
+      name: 'transfer',
+      type: 'function',
+      inputs: [{
+        type: 'address',
+        name: '_to'
+      },{
+        type: 'uint256',
+        name: '_value'
+      }]
+    }, [RECEIVER_ADDRESS, web3.utils.toHex(web3.utils.toWei('10', 'ether'))]),
+    'chainId': 5 // Use 5 for Goerli testnet
   };
 
   const signedTx = await web3.eth.accounts.signTransaction(transaction, SENDER_PRIVATE_KEY);
-  
+
   web3.eth.sendSignedTransaction(signedTx.rawTransaction)
     .on('receipt', console.log)
     .on('error', console.error);
 }
 
-// Endpoint to send a test transaction
+// Endpoint to send a test USDT transaction
 app.post('/sendTestTransaction', (req, res) => {
   sendTestTransaction()
     .then(() => res.json({ success: true, message: 'Test transaction sent successfully' }))
@@ -152,9 +173,7 @@ app.listen(PORT, () => {
 
 // Logging environment variables for verification
 logger.info("ALCHEMY_API_URL:", ALCHEMY_API_URL);
+logger.info("USDT_CONTRACT_ADDRESS:", USDT_CONTRACT_ADDRESS);
 logger.info("USDT_DEPOSIT_ADDRESS:", USDT_DEPOSIT_ADDRESS);
-
-
-// // app.listen(port, () => {
-// //   console.log(`App listening at http://localhost:${port}`);
-// // });
+logger.info("SENDER_ADDRESS:", SENDER_ADDRESS);
+logger.info("RECEIVER_ADDRESS:", RECEIVER_ADDRESS);
