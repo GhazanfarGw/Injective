@@ -1,229 +1,158 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const { createAlchemyWeb3 } = require('@alch/alchemy-web3');
-const WebSocket = require('ws');
+const winston = require('winston');
+const fs = require('fs');
+const path = require('path');
+const moment = require('moment');
 require('dotenv').config();
+const { createAlchemyWeb3 } = require('@alch/alchemy-web3');
 
 const app = express();
-const port = process.env.PORT || 4000;
+const PORT = process.env.PORT || 5000;
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
-const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS;
 const USDT_DEPOSIT_ADDRESS = process.env.USDT_DEPOSIT_ADDRESS;
+const SENDER_ADDRESS = process.env.SENDER_ADDRESS; // Replace with your sender address
+const SENDER_PRIVATE_KEY = process.env.SENDER_PRIVATE_KEY; // Replace with your private key
+const RECEIVER_ADDRESS = process.env.RECEIVER_ADDRESS; // Replace with your receiver address
 
 const web3 = createAlchemyWeb3(ALCHEMY_API_URL);
+
+// Setup logger
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: 'server.log' })
+  ]
+});
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Endpoint to check server connectivity
-app.get('/ping', (req, res) => {
+app.post('/ping', (req, res) => {
   res.json({ success: true, message: 'Server is running and connected' });
 });
 
-// API Endpoint to receive USDT transactions
-app.post('/receive-usdt', async (req, res) => {
-  const { senderAddress, amount } = req.body;
+// Endpoint to receive and save messages
+app.post('/saveMessage', (req, res) => {
+  const { message } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ success: false, message: 'Message is required' });
+  }
+
+  const filePath = path.join(__dirname, 'messages.txt');
+  const logEntry = `Received message: ${message}\n`;
+
+  fs.appendFile(filePath, logEntry, (err) => {
+    if (err) {
+      logger.error('Error saving message:', err.message);
+      return res.status(500).json({ success: false, message: 'Failed to save message' });
+    }
+
+    logger.info('Message saved successfully');
+    res.json({ success: true, message: 'Message saved successfully' });
+  });
+});
+
+// New Endpoint to receive text messages
+app.post('/receiveText', (req, res) => {
+  const { text } = req.body;
+
+  if (!text) {
+    return res.status(400).json({ success: false, message: 'Text is required' });
+  }
+
+  const filePath = path.join(__dirname, 'textMessages.txt');
+  const logEntry = `Received text at ${moment().format('YYYY-MM-DD HH:mm:ss')}: ${text}\n`;
+
+  fs.appendFile(filePath, logEntry, (err) => {
+    if (err) {
+      logger.error('Error saving text message:', err.message);
+      return res.status(500).json({ success: false, message: 'Failed to save text message' });
+    }
+
+    logger.info('Text message saved successfully');
+    res.json({ success: true, message: 'Text message saved successfully' });
+  });
+});
+
+// Function to handle new transactions
+async function handleNewTransaction(transaction) {
+  if (transaction.to && transaction.to.toLowerCase() === USDT_DEPOSIT_ADDRESS.toLowerCase()) {
+    logger.info(`Detected transaction to USDT_DEPOSIT_ADDRESS: ${transaction.hash}`);
+
+    try {
+      const receipt = await web3.eth.getTransactionReceipt(transaction.hash);
+      logger.info(`Transaction receipt: ${JSON.stringify(receipt)}`);
+
+      // Further processing can be done here
+    } catch (error) {
+      logger.error(`Error fetching transaction receipt: ${error.message}`);
+    }
+  }
+}
+
+// Listen for new pending transactions
+web3.eth.subscribe('pendingTransactions', async (error, transactionHash) => {
+  if (error) {
+    logger.error(`Error subscribing to pending transactions: ${error.message}`);
+    return;
+  }
 
   try {
-    // Validate sender address and amount
-    if (!senderAddress || !amount) {
-      return res.status(400).json({ success: false, message: 'Sender address and amount are required' });
+    const transaction = await web3.eth.getTransaction(transactionHash);
+    if (transaction) {
+      handleNewTransaction(transaction);
     }
-
-    // Example validation: Ensure senderAddress is a valid Ethereum address
-    if (!web3.utils.isAddress(senderAddress)) {
-      return res.status(400).json({ success: false, message: 'Invalid sender address' });
-    }
-
-    // Example: Log the incoming transaction
-    console.log(`Incoming USDT transaction from ${senderAddress}: ${amount} USDT`);
-
-    // Example: Process the transaction (optional)
-    // Replace this with your actual logic to handle the incoming transaction
-    // For instance, you might want to save the transaction details to a database
-
-    res.json({ success: true, message: `Received ${amount} USDT from ${senderAddress}` });
   } catch (error) {
-    console.error('Error receiving USDT:', error.message);
-    res.status(500).json({ success: false, error: error.message });
+    logger.error(`Error fetching transaction: ${error.message}`);
   }
 });
 
-// Function to handle WebSocket connection and subscription
-function subscribeToTokenTransfers() {
-  const ws = new WebSocket(`${ALCHEMY_API_URL}/ws`);
+// Function to send a test transaction
+async function sendTestTransaction() {
+  const nonce = await web3.eth.getTransactionCount(SENDER_ADDRESS, 'latest');
+  
+  const transaction = {
+    'to': RECEIVER_ADDRESS,
+    'value': web3.utils.toWei('0.01', 'ether'),
+    'gas': 2000000,
+    'nonce': nonce,
+    'chainId': 5 // Use 5 for Goerli testnet, 3 for Ropsten, 4 for Rinkeby, 42 for Kovan, 11155111 for Sepolia
+  };
 
-  ws.on('open', () => {
-    console.log('WebSocket connected');
-    
-    // Subscribe to USDT transfers to the deposit address
-    ws.send(JSON.stringify({
-      jsonrpc: "2.0",
-      method: "eth_subscribe",
-      params: [
-        "logs",
-        {
-          address: USDT_CONTRACT_ADDRESS,
-          topics: [null, web3.utils.padLeft(USDT_DEPOSIT_ADDRESS, 64)]
-        }
-      ],
-      id: 1
-    }));
-
-    // Ping-pong mechanism to keep the WebSocket connection alive
-    setInterval(() => {
-      ws.ping();
-    }, 5000); // Ping every 5 seconds
-  });
-
-  ws.on('pong', () => {
-    console.log('Received pong from server');
-  });
-
-  ws.on('message', (data) => {
-    console.log('WebSocket message received:', data);
-    const eventData = JSON.parse(data);
-    if (eventData.params && eventData.params.result) {
-      const { from, to, data: value } = eventData.params.result;
-
-      if (to.toLowerCase() === USDT_DEPOSIT_ADDRESS.toLowerCase()) {
-        const amount = web3.utils.fromWei(value, 'mwei'); // USDT has 6 decimals
-        console.log(`Received ${amount} USDT from ${from}`);
-        // Implement additional logic here to handle the received transaction
-        // For example, you can save the transaction details to a database
-      }
-    }
-  });
-
-  ws.on('close', (code, reason) => {
-    console.log(`WebSocket connection closed: ${code} - ${reason || 'No reason provided'}`);
-    if (code !== 1000) { // 1000 means a normal closure
-      // Attempt to reconnect after a delay
-      setTimeout(() => {
-        console.log('Reconnecting WebSocket...');
-        subscribeToTokenTransfers();
-      }, 10000); // Wait 10 seconds before reconnecting
-    }
-  });
-
-  ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
-    // Optionally, handle the error and attempt reconnection here
-  });
+  const signedTx = await web3.eth.accounts.signTransaction(transaction, SENDER_PRIVATE_KEY);
+  
+  web3.eth.sendSignedTransaction(signedTx.rawTransaction)
+    .on('receipt', console.log)
+    .on('error', console.error);
 }
 
-app.get('/', (req, res) => {
-  res.send('Server is running and connected!');
+// Endpoint to send a test transaction
+app.post('/sendTestTransaction', (req, res) => {
+  sendTestTransaction()
+    .then(() => res.json({ success: true, message: 'Test transaction sent successfully' }))
+    .catch((error) => res.status(500).json({ success: false, message: error.message }));
 });
 
-app.listen(port, () => {
-	console.log("Sever is listening on port 4000");
-  subscribeToTokenTransfers();
-})
+// Start server and log server start-up information
+app.listen(PORT, () => {
+  const startTime = moment().format('YYYY-MM-DD HH:mm:ss');
+  const address = `http://localhost:${PORT}`;
+  logger.info(`Server started at ${startTime}`);
+  logger.info(`Server running on address: ${address}`);
+  console.log(`Server running on port ${PORT}`);
+});
 
 // Logging environment variables for verification
-console.log("ALCHEMY_API_URL:", ALCHEMY_API_URL);
-console.log("USDT_CONTRACT_ADDRESS:", USDT_CONTRACT_ADDRESS);
-console.log("USDT_DEPOSIT_ADDRESS:", USDT_DEPOSIT_ADDRESS);
-
-// const express = require('express');
-// const cors = require('cors');
-// const mongoose = require('mongoose');
-
-// require('dotenv').config();
-
-// const app = express();
-// const port = process.env.PORT || 4000;
-
-// app.use(cors());
-// app.use(express.json());
-
-
-
-// const uri = process.env.ATLAS_URI;
-// mongoose.connect(uri, { useNewUrlParser: true, useCreateIndex: true });
-
-// const connection = mongoose.connection;
-// connection.once('open', () => {
-//   console.log("MongoDB database connection established successfully");
-// });
-
-
-// const userRouter = require('./routes/user');
-
-// app.listen(port, () => {
-// 	console.log("Sever is listening on port 4000")
-// })
-
-// app.use('/user', userRouter);
-
-
-// // const express = require('express');
-// // const cors = require('cors');
-// // const mongoose = require('mongoose');
-// // const { resolve } = require("path");
-
-// // // Replace if using a different env file or config
-// // const env = require("dotenv").config({ path: "./.env" });
-
-
-// // (process.env.STRIPE_SECRET_KEY); // Import Stripe package
-
-// // const app = express();
-// // const port = process.env.PORT || 5252;
-
-// // app.use(cors());
-// // app.use(express.json());
-
-// // const uri = process.env.ATLAS_URI;
-// // mongoose.connect(uri, { useNewUrlParser: true, useCreateIndex: true });
-
-// // const connection = mongoose.connection;
-// // connection.once('open', () => {
-// //   console.log("MongoDB database connection established successfully");
-// // });
-
-// // const userRouter = require('./routes/user');
-
-// // app.use('/user', userRouter);
-
-// // const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY, {
-// //   apiVersion: "2022-08-01",
-// // });
-
-// // app.use(express.static(process.env.STATIC_DIR));
-
-// // app.get("/", (req, res) => {
-// //   const path = resolve(process.env.STATIC_DIR + "/index.html");
-// //   res.sendFile(path);
-// // });
-
-// // app.get("/config", (req, res) => {
-// //   res.send({
-// //     publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
-// //   });
-// // });
-
-// // app.post("/create-payment-intent", async (req, res) => {
-// //   try {
-// //     const paymentIntent = await stripe.paymentIntents.create({
-// //       currency: "EUR",
-// //       amount: 100,
-// //       automatic_payment_methods: { enabled: true },
-// //     });
-
-// //     // Send publishable key and PaymentIntent details to client
-// //     res.send({
-// //       clientSecret: paymentIntent.client_secret,
-// //     });
-// //   } catch (e) {
-// //     return res.status(400).send({
-// //       error: {
-// //         message: e.message,
-// //       },
-// //     });
-// //   }
-// // });
-
+logger.info("ALCHEMY_API_URL:", ALCHEMY_API_URL);
+logger.info("USDT_DEPOSIT_ADDRESS:", USDT_DEPOSIT_ADDRESS);
 
 
 // // app.listen(port, () => {
