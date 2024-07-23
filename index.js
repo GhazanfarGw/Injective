@@ -48,6 +48,14 @@ app.post('/ping', (req, res) => {
   res.json({ success: true, message: 'Server is running and connected' });
 });
 
+// Root route to return server status
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Server is running and connected'
+  });
+});
+
 // Endpoint to receive and save messages
 app.post('/sendData', async (req, res) => {
   const { message } = req.body;
