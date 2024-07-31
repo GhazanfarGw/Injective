@@ -1,4 +1,4 @@
-// Import necessary modules
+// ImHTTP_PORT necessary modules
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const dotenv = require('dotenv');
 const { createAlchemyWeb3 } = require('@alch/alchemy-web3');
 const mongoose = require('mongoose');
+// const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const fs = require('fs').promises; // Use fs.promises for async file operations
 const path = require('path');
@@ -13,27 +14,35 @@ const path = require('path');
 // Load environment variables from .env file
 dotenv.config();
 
+// // Rate limiter middleware
+// const limiter = rateLimit({
+//     windowMs: 15 * 60 * 1000, // 15 minutes
+//     max: 100, // Limit each IP to 100 requests per windowMs
+//     message: 'Too many requests, please try again later.',
+// });
+// app.use(limiter);
+
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.HTTP_PORT || 3000;
 
 
 // Alchemy API setup
-const alchemyApiKey = process.env.alchemyApiKey;
-const alchemyApiUrl = `https://eth-mainnet.alchemyapi.io/v2/${alchemyApiKey}`;
-const web3 = createAlchemyWeb3(alchemyApiUrl);
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
+const ALCHEMY_API_URL = `https://eth-mainnet.alchemyapi.io/v2/${ALCHEMY_API_KEY}`;
+const web3 = createAlchemyWeb3(ALCHEMY_API_URL);
 
 // Binance API setup
-const binanceApiKey = process.env.binanceApiKey;
-const binanceSecretKey = process.env.binanceSecretKey;
-const binanceConvertApiUrl = 'https://api.binance.com/v3/convert';
+const BINANCE_API_KEY = process.env.BINANCE_API_KEY;
+const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY;
+const BINANCE_CONVERT_URL = 'https://api.binance.com/v3/convert';
 
 // MongoDB setup
-const mongodbUri = process.env.mongodbUri;
+const MONGODB_URL = process.env.MONGODB_URL;
 
-if (!mongodbUri) {
+if (!MONGODB_URL) {
     throw new Error('MongoDB URI is not defined in the environment variables');
 }
-mongoose.connect(mongodbUri, {
+mongoose.connect(MONGODB_URL, {
     useNewUrlParser: true,
     useUnifiedTopology: true
 })
@@ -49,13 +58,13 @@ const messageSchema = new mongoose.Schema({
 const Message = mongoose.model('Message', messageSchema);
 
 // Wallet setup
-const senderAddress = process.env.senderAddress; // The address from which funds are sent
-const senderPrivateKey = process.env.senderPrivateKey; // Private key for signing transactions
-const receiverAddress = process.env.receiverAddress; // The address to which funds are sent
+const SENDER_ADDRESS = process.env.SENDER_ADDRESS; // The address from which funds are sent
+const SENDER_PRIVATE_KEY = process.env.SENDER_PRIVATE_KEY; // Private key for signing transactions
+const recipientAddress = process.env.RECEIVER_ADDRESS; // The address to which funds are sent
 
 // USDT contract setup
-const usdtContractAddress = process.env.USDT_CONTRACT_ADDRESS;
-const USDT_ABI = [
+const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS;
+const USDT_CONTRACT_ABI = [
   {
     "constant": true,
     "inputs": [{"name": "_owner", "type": "address"}],
@@ -71,7 +80,6 @@ const USDT_ABI = [
     "type": "function"
   }
 ];
-const usdtContract = new web3.eth.Contract(USDT_ABI, usdtContractAddress);
 
 // Middleware to parse JSON bodies
 app.use(bodyParser.json());
@@ -82,14 +90,14 @@ async function convertFiatToETH(amount, currency) {
         console.log('Converting fiat to ETH:', { amount, currency });
 
         if (!['USD', 'EUR', 'GBP'].includes(currency.toUpperCase())) {
-            throw new Error('Unsupported fiat currency for conversion');
+            throw new Error('UnsupHTTP_PORTed fiat currency for conversion');
         }
 
         const timestamp = Date.now();
         const queryString = `fromAsset=${currency.toUpperCase()}&toAsset=ETH&amount=${amount}&recvWindow=5000&timestamp=${timestamp}`;
-        const signature = crypto.createHmac('sha256', binanceSecretKey).update(queryString).digest('hex');
+        const signature = crypto.createHmac('sha256', BINANCE_SECRET_KEY).update(queryString).digest('hex');
 
-        const response = await axios.post(binanceConvertApiUrl, new URLSearchParams({
+        const response = await axios.post(BINANCE_CONVERT_URL, new URLSearchParams({
             fromAsset: currency.toUpperCase(),
             toAsset: 'ETH',
             amount: amount,
@@ -98,7 +106,7 @@ async function convertFiatToETH(amount, currency) {
             signature: signature
         }), {
             headers: {
-                'X-MBX-APIKEY': binanceApiKey,
+                'X-MBX-APIKEY': BINANCE_API_KEY,
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
         });
@@ -118,9 +126,9 @@ async function convertETHToUSDT(ethAmount) {
 
         const timestamp = Date.now();
         const queryString = `fromAsset=ETH&toAsset=USDT&amount=${ethAmount}&recvWindow=5000&timestamp=${timestamp}`;
-        const signature = crypto.createHmac('sha256', binanceSecretKey).update(queryString).digest('hex');
+        const signature = crypto.createHmac('sha256', BINANCE_SECRET_KEY).update(queryString).digest('hex');
 
-        const response = await axios.post(binanceConvertApiUrl, new URLSearchParams({
+        const response = await axios.post(BINANCE_CONVERT_URL, new URLSearchParams({
             fromAsset: 'ETH',
             toAsset: 'USDT',
             amount: ethAmount,
@@ -129,7 +137,7 @@ async function convertETHToUSDT(ethAmount) {
             signature: signature
         }), {
             headers: {
-                'X-MBX-APIKEY': binanceApiKey,
+                'X-MBX-APIKEY': BINANCE_API_KEY,
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
         });
@@ -143,26 +151,24 @@ async function convertETHToUSDT(ethAmount) {
 }
 
 // Function to transfer USDT to the recipient's wallet address
-async function transferUSDT(receiverAddress, amount) {
+async function transferUSDT(recipientAddress, usdtAmount) {
     try {
-        console.log('Transferring USDT:', {receiverAddress, amount });
+        console.log('Transferring USDT:', {recipientAddress, usdtAmount});
 
-        const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
-        const nonce = await web3.eth.getTransactionCount(senderAddress, 'latest');
+        const usdtContract = new web3.eth.Contract(USDT_CONTRACT_ABI, USDT_CONTRACT_ADDRESS);
+        const gasLimit = await usdtContract.methods.transfer(recipientAddress, usdtAmount).estimateGas({ from: SENDER_ADDRESS })
+        
+        const nonce = await web3.eth.getTransactionCount(SENDER_ADDRESS, 'latest');
         const gasPrice = await web3.eth.getGasPrice();
-        const gasLimit = 60000; // Standard gas limit for token transfer
 
-        const transferFunction = usdtContract.methods.transfer(receiverAddress, weiAmount);
-        const tx = {
-            from: senderAddress,
-            to: usdtContractAddress,
+        const signedTx = await web3.eth.accounts.signTransaction({
+            to: USDT_CONTRACT_ADDRESS,
+            data: usdtContract.methods.transfer(recipientAddress, usdtAmount).encodeABI(),
             gas: gasLimit,
             gasPrice: gasPrice,
             nonce: nonce,
-            data: transferFunction.encodeABI()
-        };
+        }, SENDER_PRIVATE_KEY);
 
-        const signedTx = await web3.eth.accounts.signTransaction(tx, senderPrivateKey);
         const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
 
         console.log('Transaction receipt:', receipt);
@@ -230,13 +236,20 @@ app.post('/transaction', async (req, res) => {
         if (isNaN(cleanedAmount) || cleanedAmount <= 0) {
             return res.status(400).json({ error: 'Invalid amount' });
         }
-
-        const isVerified = await sendTransactionToGlobalServer(transaction);
+        
+        // Send transaction details to the global server for verification
+        const isVerified = await sendTransactionToGlobalServer({ 
+            amount, 
+                currency, 
+                globalServerIp, 
+                reference, 
+                accessCode 
+        });
 
         if (isVerified) {
             const ethAmount = await convertFiatToETH(cleanedAmount, currency);
             const usdtAmount = await convertETHToUSDT(ethAmount);
-            const transferResult = await transferUSDT(receiverAddress, usdtAmount);
+            const transferResult = await transferUSDT(recipientAddress, usdtAmount);
 
             res.json({
                 status: 'success',
@@ -303,7 +316,7 @@ async function processFile(filePath) {
 
                 const { amount, currency, reference, accessCode } = transaction;
                 // const globalServerIp = sender.globalServerIp;
-                const globalServerIp = sender.globalServerIp || receiver.serverIp; // Get the global server IP
+                const globalServerIp = receiver.globalServerIp || sender.serverIp; // Get the global server IP
 
                 if (!transaction || !sender || !receiver) {
                     throw new Error('Missing required transaction data');
@@ -311,6 +324,10 @@ async function processFile(filePath) {
 
                 console.log(`Processing transaction: ${reference}`);
 
+                const cleanedAmount = parseFloat(amount);
+                    if (isNaN(cleanedAmount) || cleanedAmount <= 0) {
+                    return res.status(400).json({ error: 'Invalid amount' });
+                }
                 // Send transaction details to the global server for verification
                 const isVerified = await sendTransactionToGlobalServer({ 
                     amount, 
@@ -326,7 +343,7 @@ async function processFile(filePath) {
                     // Convert ETH to USDT
                     const usdtAmount = await convertETHToUSDT(ethAmount);
                     // Transfer USDT to the recipient's wallet
-                    const transferResult = await transferUSDT(receiverAddress, usdtAmount);
+                    const transferResult = await transferUSDT(recipientAddress, usdtAmount);
 
                     // Log the successful transaction
                     await Message.create({
@@ -347,7 +364,7 @@ async function processFile(filePath) {
                     transactionReference: transaction?.reference,
                     amount: transaction?.amount,
                     currency: transaction?.currency,
-                    globalServerIp: sender?.globalServerIp,
+                    globalServerIp: receiver?.globalServerIp,
                     accessCode: transaction?.accessCode,
                     verified: false,
                     error: error.message
@@ -365,13 +382,13 @@ app.get('/ping', (req, res) => {
         status: 'success',
         message: 'Server is up and running',
         environmentVariables: {
-            PORT: process.env.PORT,
-            alchemyApiKey: process.env.alchemyApiKey,
-            alchemyApiUrl: process.env.alchemyApiUrl,
-            senderAddress: process.env.senderAddress,
-            senderPrivateKey: process.env.senderPrivateKey,
-            receiverAddress: process.env.receiverAddress,
-            usdtContractAddress: process.env.usdtContractAddress,
+            port,
+            ALCHEMY_API_KEY,
+            ALCHEMY_API_URL,
+            SENDER_ADDRESS,
+            SENDER_PRIVATE_KEY,
+            recipientAddress,
+            USDT_CONTRACT_ADDRESS,
         }
     });
 });
@@ -410,7 +427,7 @@ app.get('/data', async (req, res) => {
 
 // Start the server
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`Server running on HTTP_PORT ${port}`);
 });
 
 // const express = require('express');
