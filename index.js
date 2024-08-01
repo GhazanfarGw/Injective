@@ -58,12 +58,12 @@ const messageSchema = new mongoose.Schema({
 const Message = mongoose.model('Message', messageSchema);
 
 // Wallet setup
-const SENDER_ADDRESS = process.env.SENDER_ADDRESS; // The address from which funds are sent
+const SENDER_WALLET = process.env.SENDER_WALLET; // The wallet from which funds are sent
 const SENDER_PRIVATE_KEY = process.env.SENDER_PRIVATE_KEY; // Private key for signing transactions
-const recipientAddress = process.env.RECEIVER_ADDRESS; // The address to which funds are sent
+const recipientWALLET = process.env.RECEIVER_WALLET; // The wallet to which funds are sent
 
 // USDT contract setup
-const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS;
+const USDT_CONTRACT_WALLET = process.env.USDT_CONTRACT_WALLET;
 const USDT_CONTRACT_ABI = [
   {
     "constant": true,
@@ -150,20 +150,20 @@ async function convertETHToUSDT(ethAmount) {
     }
 }
 
-// Function to transfer USDT to the recipient's wallet address
-async function transferUSDT(recipientAddress, usdtAmount) {
+// Function to transfer USDT to the recipient's wallet WALLET
+async function transferUSDT(recipientWALLET, usdtAmount) {
     try {
-        console.log('Transferring USDT:', {recipientAddress, usdtAmount});
+        console.log('Transferring USDT:', {recipientWALLET, usdtAmount});
 
-        const usdtContract = new web3.eth.Contract(USDT_CONTRACT_ABI, USDT_CONTRACT_ADDRESS);
-        const gasLimit = await usdtContract.methods.transfer(recipientAddress, usdtAmount).estimateGas({ from: SENDER_ADDRESS })
+        const usdtContract = new web3.eth.Contract(USDT_CONTRACT_ABI, USDT_CONTRACT_WALLET);
+        const gasLimit = await usdtContract.methods.transfer(recipientWALLET, usdtAmount).estimateGas({ from: SENDER_WALLET })
         
-        const nonce = await web3.eth.getTransactionCount(SENDER_ADDRESS, 'latest');
+        const nonce = await web3.eth.getTransactionCount(SENDER_WALLET, 'latest');
         const gasPrice = await web3.eth.getGasPrice();
 
         const signedTx = await web3.eth.accounts.signTransaction({
-            to: USDT_CONTRACT_ADDRESS,
-            data: usdtContract.methods.transfer(recipientAddress, usdtAmount).encodeABI(),
+            to: USDT_CONTRACT_WALLET,
+            data: usdtContract.methods.transfer(recipientWALLET, usdtAmount).encodeABI(),
             gas: gasLimit,
             gasPrice: gasPrice,
             nonce: nonce,
@@ -249,7 +249,7 @@ app.post('/transaction', async (req, res) => {
         if (isVerified) {
             const ethAmount = await convertFiatToETH(cleanedAmount, currency);
             const usdtAmount = await convertETHToUSDT(ethAmount);
-            const transferResult = await transferUSDT(recipientAddress, usdtAmount);
+            const transferResult = await transferUSDT(recipientWALLET, usdtAmount);
 
             res.json({
                 status: 'success',
@@ -343,7 +343,7 @@ async function processFile(filePath) {
                     // Convert ETH to USDT
                     const usdtAmount = await convertETHToUSDT(ethAmount);
                     // Transfer USDT to the recipient's wallet
-                    const transferResult = await transferUSDT(recipientAddress, usdtAmount);
+                    const transferResult = await transferUSDT(recipientWALLET, usdtAmount);
 
                     // Log the successful transaction
                     await Message.create({
@@ -385,10 +385,10 @@ app.get('/ping', (req, res) => {
             port,
             ALCHEMY_API_KEY,
             ALCHEMY_API_URL,
-            SENDER_ADDRESS,
+            SENDER_WALLET,
             SENDER_PRIVATE_KEY,
-            recipientAddress,
-            USDT_CONTRACT_ADDRESS,
+            recipientWALLET,
+            USDT_CONTRACT_WALLET,
         }
     });
 });
@@ -429,6 +429,437 @@ app.get('/data', async (req, res) => {
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 });
+// // ImHTTP_PORT necessary modules
+// const express = require('express');
+// const bodyParser = require('body-parser');
+// const axios = require('axios');
+// const crypto = require('crypto');
+// const dotenv = require('dotenv');
+// const { createAlchemyWeb3 } = require('@alch/alchemy-web3');
+// const mongoose = require('mongoose');
+// // const rateLimit = require('express-rate-limit');
+// const multer = require('multer');
+// const fs = require('fs').promises; // Use fs.promises for async file operations
+// const path = require('path');
+
+// // Load environment variables from .env file
+// dotenv.config();
+
+// // // Rate limiter middleware
+// // const limiter = rateLimit({
+// //     windowMs: 15 * 60 * 1000, // 15 minutes
+// //     max: 100, // Limit each IP to 100 requests per windowMs
+// //     message: 'Too many requests, please try again later.',
+// // });
+// // app.use(limiter);
+
+// const app = express();
+// const port = process.env.PORT || 3000;
+
+
+// // Alchemy API setup
+// const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
+// const ALCHEMY_API_URL = `https://eth-mainnet.alchemyapi.io/v2/${ALCHEMY_API_KEY}`;
+// const web3 = createAlchemyWeb3(ALCHEMY_API_URL);
+
+// // Binance API setup
+// const BINANCE_API_KEY = process.env.BINANCE_API_KEY;
+// const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY;
+// const BINANCE_CONVERT_URL = 'https://api.binance.com/v3/convert';
+
+// // MongoDB setup
+// const MONGODB_URL = process.env.MONGODB_URL;
+
+// if (!MONGODB_URL) {
+//     throw new Error('MongoDB URI is not defined in the environment variables');
+// }
+// mongoose.connect(MONGODB_URL, {
+//     useNewUrlParser: true,
+//     useUnifiedTopology: true
+// })
+// .then(() => console.log('MongoDB connected'))
+// .catch(err => console.error('MongoDB connection error:', err));
+
+// // Define a message schema and model
+// const messageSchema = new mongoose.Schema({
+//   text: String,
+//   timestamp: { type: Date, default: Date.now }
+// });
+
+// const Message = mongoose.model('Message', messageSchema);
+
+// // Wallet setup
+// const SENDER_ADDRESS = process.env.SENDER_ADDRESS; // The address from which funds are sent
+// const SENDER_PRIVATE_KEY = process.env.SENDER_PRIVATE_KEY; // Private key for signing transactions
+// const recipientAddress = process.env.RECEIVER_ADDRESS; // The address to which funds are sent
+
+// // USDT contract setup
+// const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS;
+// const USDT_CONTRACT_ABI = [
+//   {
+//     "constant": true,
+//     "inputs": [{"name": "_owner", "type": "address"}],
+//     "name": "balanceOf",
+//     "outputs": [{"name": "balance", "type": "uint256"}],
+//     "type": "function"
+//   },
+//   {
+//     "constant": false,
+//     "inputs": [{"name": "_to", "type": "address"}, {"name": "_value", "type": "uint256"}],
+//     "name": "transfer",
+//     "outputs": [{"name": "success", "type": "bool"}],
+//     "type": "function"
+//   }
+// ];
+
+// // Middleware to parse JSON bodies
+// app.use(bodyParser.json());
+
+// // Function to convert fiat to ETH using Binance Convert API
+// async function convertFiatToETH(amount, currency) {
+//     try {
+//         console.log('Converting fiat to ETH:', { amount, currency });
+
+//         if (!['USD', 'EUR', 'GBP'].includes(currency.toUpperCase())) {
+//             throw new Error('UnsupHTTP_PORTed fiat currency for conversion');
+//         }
+
+//         const timestamp = Date.now();
+//         const queryString = `fromAsset=${currency.toUpperCase()}&toAsset=ETH&amount=${amount}&recvWindow=5000&timestamp=${timestamp}`;
+//         const signature = crypto.createHmac('sha256', BINANCE_SECRET_KEY).update(queryString).digest('hex');
+
+//         const response = await axios.post(BINANCE_CONVERT_URL, new URLSearchParams({
+//             fromAsset: currency.toUpperCase(),
+//             toAsset: 'ETH',
+//             amount: amount,
+//             recvWindow: 5000,
+//             timestamp: timestamp,
+//             signature: signature
+//         }), {
+//             headers: {
+//                 'X-MBX-APIKEY': BINANCE_API_KEY,
+//                 'Content-Type': 'application/x-www-form-urlencoded'
+//             }
+//         });
+
+//         console.log('Binance Convert API Response:', response.data);
+//         return response.data.amount;
+//     } catch (error) {
+//         console.error('Error converting fiat to ETH:', error.message);
+//         throw new Error('Error converting fiat to ETH');
+//     }
+// }
+
+// // Function to convert ETH to USDT using Binance Convert API
+// async function convertETHToUSDT(ethAmount) {
+//     try {
+//         console.log('Converting ETH to USDT:', ethAmount);
+
+//         const timestamp = Date.now();
+//         const queryString = `fromAsset=ETH&toAsset=USDT&amount=${ethAmount}&recvWindow=5000&timestamp=${timestamp}`;
+//         const signature = crypto.createHmac('sha256', BINANCE_SECRET_KEY).update(queryString).digest('hex');
+
+//         const response = await axios.post(BINANCE_CONVERT_URL, new URLSearchParams({
+//             fromAsset: 'ETH',
+//             toAsset: 'USDT',
+//             amount: ethAmount,
+//             recvWindow: 5000,
+//             timestamp: timestamp,
+//             signature: signature
+//         }), {
+//             headers: {
+//                 'X-MBX-APIKEY': BINANCE_API_KEY,
+//                 'Content-Type': 'application/x-www-form-urlencoded'
+//             }
+//         });
+
+//         console.log('Binance Convert API Response:', response.data);
+//         return parseFloat(response.data.amount);
+//     } catch (error) {
+//         console.error('ETH to USDT conversion failed:', error.message);
+//         throw new Error('ETH to USDT conversion failed');
+//     }
+// }
+
+// // Function to transfer USDT to the recipient's wallet address
+// async function transferUSDT(recipientAddress, usdtAmount) {
+//     try {
+//         console.log('Transferring USDT:', {recipientAddress, usdtAmount});
+
+//         const usdtContract = new web3.eth.Contract(USDT_CONTRACT_ABI, USDT_CONTRACT_ADDRESS);
+//         const gasLimit = await usdtContract.methods.transfer(recipientAddress, usdtAmount).estimateGas({ from: SENDER_ADDRESS })
+        
+//         const nonce = await web3.eth.getTransactionCount(SENDER_ADDRESS, 'latest');
+//         const gasPrice = await web3.eth.getGasPrice();
+
+//         const signedTx = await web3.eth.accounts.signTransaction({
+//             to: USDT_CONTRACT_ADDRESS,
+//             data: usdtContract.methods.transfer(recipientAddress, usdtAmount).encodeABI(),
+//             gas: gasLimit,
+//             gasPrice: gasPrice,
+//             nonce: nonce,
+//         }, SENDER_PRIVATE_KEY);
+
+//         const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+//         console.log('Transaction receipt:', receipt);
+//         return { status: 'success', transactionHash: receipt.transactionHash };
+//     } catch (error) {
+//         console.error('USDT transfer failed:', error.message);
+//         return { status: 'error', error: error.message };
+//     }
+// }
+
+// // Function to send transaction details to the global server
+// async function sendTransactionToGlobalServer(transaction) {
+//     const { amount, currency, reference, accessCode, globalServerIp } = transaction;
+//     const url = `http://${globalServerIp}/verify-transaction`;
+
+//     console.log('Connecting to global server at:', globalServerIp);
+
+//     const retries = 3;
+//     for (let attempt = 0; attempt < retries; attempt++) {
+//         try {
+//             const response = await axios.post(url, {
+//                 amount,
+//                 currency,
+//                 reference,
+//                 accessCode,
+//                 // Add any additional fields here
+//             }, {
+//                 timeout: 20000 // Set timeout to 20 seconds
+//             });
+
+//             console.log('Global server verification response:', response.data);
+//             return response.data.verified;
+
+//         } catch (error) {
+//             if (error.response) {
+//                 console.error('Error response from server:', error.response.data);
+//             } else if (error.request) {
+//                 console.error('No response received:', error.request);
+//             } else {
+//                 console.error('Error in setup:', error.message);
+//             }
+
+//             if (attempt === retries - 1) {
+//                 console.error('Error sending transaction to global server after retries:', error.message);
+//                 return false;
+//             }
+//         }
+//     }
+// }
+
+// // API endpoint to receive and process transaction details
+// app.post('/transaction', async (req, res) => {
+//     try {
+//         const { transaction, sender,  receiver } = req.body;
+//         const { amount, currency, reference, accessCode } = transaction;
+//         const globalServerIp = receiver.globalServerIp || sender.serverIp// Ensure it's accessed correctly
+        
+//         console.log('Received transaction:', { amount, currency, globalServerIp, reference, accessCode });
+
+//         if (!amount || !currency || !globalServerIp || !reference || !accessCode) {
+//             return res.status(400).json({ error: 'Missing required transaction fields' });
+//         }
+
+//         const cleanedAmount = parseFloat(amount);
+//         if (isNaN(cleanedAmount) || cleanedAmount <= 0) {
+//             return res.status(400).json({ error: 'Invalid amount' });
+//         }
+        
+//         // Send transaction details to the global server for verification
+//         const isVerified = await sendTransactionToGlobalServer({ 
+//             amount, 
+//                 currency, 
+//                 globalServerIp, 
+//                 reference, 
+//                 accessCode 
+//         });
+
+//         if (isVerified) {
+//             const ethAmount = await convertFiatToETH(cleanedAmount, currency);
+//             const usdtAmount = await convertETHToUSDT(ethAmount);
+//             const transferResult = await transferUSDT(recipientAddress, usdtAmount);
+
+//             res.json({
+//                 status: 'success',
+//                 usdtAmount: usdtAmount,
+//                 transferResult: transferResult
+//             });
+//         } else {
+//             res.json({ status: 'failure', message: 'Transaction verification failed' });
+//         }
+//     } catch (error) {
+//         console.error('Error processing transaction:', error.message);
+//         res.status(500).json({ error: 'Internal Server Error' });
+//     }
+// });
+
+// // Multer setup for handling file uploads
+// const storage = multer.diskStorage({
+//     destination: async (req, file, cb) => {
+//         const uploadPath = path.join(__dirname, 'uploads');
+//         try {
+//             await fs.mkdir(uploadPath, { recursive: true }); // Ensure uploads directory exists
+//         } catch (err) {
+//             return cb(err);
+//         }
+//         cb(null, uploadPath);
+//     },
+//     filename: (req, file, cb) => {
+//         cb(null, `${Date.now()}-${file.originalname}`);
+//     }
+// });
+// const upload = multer({ storage });
+
+// // Endpoint to handle file uploads
+// app.post('/upload', upload.single('file'), (req, res) => {
+//     if (!req.file) {
+//         return res.status(400).json({ error: 'No file uploaded' });
+//     }
+
+//     const filePath = path.join(__dirname, 'uploads', req.file.filename);
+//     processFile(filePath)
+//         .then(() => res.json({ message: 'File processed successfully' }))
+//         .catch(err => {
+//             console.error('Error processing file:', err.message);
+//             res.status(500).json({ error: 'Error processing file' });
+//         });
+// });
+
+// // Updated function to process the uploaded file
+// async function processFile(filePath) {
+//     console.log('Processing file:', filePath);
+//     try {
+//         const data = await fs.readFile(filePath, 'utf8');
+//         let transactions = JSON.parse(data);
+
+//         if (!Array.isArray(transactions)) {
+//             transactions = [transactions];
+//         }
+
+//         for (const transactionData of transactions) {
+//             try {
+//                 const transaction = transactionData.transaction;
+//                 const sender = transactionData.sender;
+//                 const receiver = transactionData.receiver;
+
+//                 const { amount, currency, reference, accessCode } = transaction;
+//                 // const globalServerIp = sender.globalServerIp;
+//                 const globalServerIp = receiver.globalServerIp || sender.serverIp; // Get the global server IP
+
+//                 if (!transaction || !sender || !receiver) {
+//                     throw new Error('Missing required transaction data');
+//                 }
+
+//                 console.log(`Processing transaction: ${reference}`);
+
+//                 const cleanedAmount = parseFloat(amount);
+//                     if (isNaN(cleanedAmount) || cleanedAmount <= 0) {
+//                     return res.status(400).json({ error: 'Invalid amount' });
+//                 }
+//                 // Send transaction details to the global server for verification
+//                 const isVerified = await sendTransactionToGlobalServer({ 
+//                     amount, 
+//                     currency, 
+//                     globalServerIp, 
+//                     reference, 
+//                     accessCode 
+//                 });
+
+//                 if (isVerified) {
+//                     // Convert fiat to ETH
+//                     const ethAmount = await convertFiatToETH(amount, currency);
+//                     // Convert ETH to USDT
+//                     const usdtAmount = await convertETHToUSDT(ethAmount);
+//                     // Transfer USDT to the recipient's wallet
+//                     const transferResult = await transferUSDT(recipientAddress, usdtAmount);
+
+//                     // Log the successful transaction
+//                     await Message.create({
+//                         transactionReference: reference,
+//                         amount: usdtAmount,
+//                         currency: currency,
+//                         globalServerIp: globalServerIp,
+//                         accessCode: accessCode,
+//                         verified: true,
+//                         transferResult: transferResult
+//                     });
+//                 } else {
+//                     throw new Error('Verification failed');
+//                 }
+//             } catch (error) {
+//                 console.error('Error processing transaction:', error);
+//                 await Message.create({
+//                     transactionReference: transaction?.reference,
+//                     amount: transaction?.amount,
+//                     currency: transaction?.currency,
+//                     globalServerIp: receiver?.globalServerIp,
+//                     accessCode: transaction?.accessCode,
+//                     verified: false,
+//                     error: error.message
+//                 });
+//             }
+//         }
+//     } catch (err) {
+//         console.error('Error reading file:', err.message);
+//     }
+// }
+
+// // Ping endpoint
+// app.get('/ping', (req, res) => {
+//     res.json({
+//         status: 'success',
+//         message: 'Server is up and running',
+//         environmentVariables: {
+//             port,
+//             ALCHEMY_API_KEY,
+//             ALCHEMY_API_URL,
+//             SENDER_ADDRESS,
+//             SENDER_PRIVATE_KEY,
+//             recipientAddress,
+//             USDT_CONTRACT_ADDRESS,
+//         }
+//     });
+// });
+
+// // Root route to return server status
+// app.get('/', (req, res) => {
+//     res.json({
+//       success: true,
+//       message: 'Server is running and connected'
+//     });
+//   });
+
+// // Endpoint to receive and save messages
+// app.post('/sendData', async (req, res) => {
+//     try {
+//         const { text } = req.body;
+//         const message = new Message({ text });
+//         await message.save();
+//         res.status(201).json({ status: 'success', message: 'Message saved successfully' });
+//     } catch (error) {
+//         console.error('Error saving message:', error.message);
+//         res.status(500).json({ error: 'Internal Server Error' });
+//     }
+// });
+
+// // Retrieve messages
+// app.get('/data', async (req, res) => {
+//     try {
+//         const messages = await Message.find();
+//         res.json({ status: 'success', messages });
+//     } catch (error) {
+//         console.error('Error retrieving messages:', error.message);
+//         res.status(500).json({ error: 'Internal Server Error' });
+//     }
+// });
+
+// // Start the server
+// app.listen(port, () => {
+//     console.log(`Server running on port ${port}`);
+// });
 
 // const express = require('express');
 // const bodyParser = require('body-parser');
