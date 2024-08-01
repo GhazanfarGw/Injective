@@ -23,7 +23,7 @@ dotenv.config();
 // app.use(limiter);
 
 const app = express();
-const Port = process.env.PORT;
+const port = process.env.PORT || 3000;
 
 
 // Alchemy API setup
@@ -427,7 +427,7 @@ app.get('/data', async (req, res) => {
 
 // Start the server
 app.listen(port, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on port ${port}`);
 });
 
 // const express = require('express');
