@@ -23,7 +23,7 @@ dotenv.config();
 // app.use(limiter);
 
 const app = express();
-const PORT = process.env.PORT;
+const Port = process.env.PORT;
 
 
 // Alchemy API setup
