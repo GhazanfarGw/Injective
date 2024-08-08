@@ -7,6 +7,7 @@ const dotenv = require('dotenv');
 const { createAlchemyWeb3 } = require('@alch/alchemy-web3');
 const mongoose = require('mongoose');
 // const rateLimit = require('express-rate-limit');
+const { ChainId, Fetcher, Route, Trade, TokenAmount, TradeType, Percent } = require('@uniswap/sdk');
 const multer = require('multer');
 const fs = require('fs').promises; // Use fs.promises for async file operations
 const path = require('path');
@@ -24,7 +25,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
-
+const SERVER_URL = process.env.SERVER_URL;
 
 // Alchemy API setup
 const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
@@ -48,14 +49,6 @@ mongoose.connect(MONGODB_URL, {
 })
 .then(() => console.log('MongoDB connected'))
 .catch(err => console.error('MongoDB connection error:', err));
-
-// Define a message schema and model
-const messageSchema = new mongoose.Schema({
-  text: String,
-  timestamp: { type: Date, default: Date.now }
-});
-
-const Message = mongoose.model('Message', messageSchema);
 
 // Wallet setup
 const SENDER_ADDRESS = process.env.SENDER_ADDRESS; // The address from which funds are sent
@@ -84,13 +77,95 @@ const USDT_CONTRACT_ABI = [
 // Middleware to parse JSON bodies
 app.use(bodyParser.json());
 
+// Function to fetch live ETH price in specified fiat currency
+async function fetchETHPrice(currency) {
+    try {
+        const response = await axios.get(`https://api.coingecko.com/api/v3/simple/price`, {
+            params: {
+                ids: 'ethereum',
+                vs_currencies: currency.toLowerCase()
+            }
+        });
+
+        const price = response.data.ethereum[currency.toLowerCase()];
+        if (!price) {
+            throw new Error(`Price for ${currency} not available.`);
+        }
+        console.log(`Current ETH price in ${currency.toUpperCase()}: $${price}`);
+        return price;
+    } catch (error) {
+        console.error('Error fetching ETH price:', error.message);
+        throw new Error('Error fetching ETH price.');
+    }
+}
+
+// Helper function to check if USDT conversion already exists
+async function checkUSDTConversion(reference, transactionCode, releaseCode, activationCode, downloadCode, receivingCode, interbankBlockingCode, downloadBlockingCode, receiverCode, globalServerIp) {
+    const url = `http://${globalServerIp}/check-usdt-conversion`;
+    try {
+        const response = await axios.post(url, {
+            reference, transactionCode, releaseCode, activationCode, downloadCode, receivingCode, interbankBlockingCode, downloadBlockingCode, receiverCode,
+        });
+        return response.data.usdtAmount;
+    } catch (error) {
+        console.error('Error checking USDT conversion:', error.message);
+        return null;
+    }
+}
+
+// Function to send transaction details to the global server
+async function sendTransactionToGlobalServer(transaction) {
+    const { amount, currency, reference, transactionCode, releaseCode, activationCode, downloadCode, receivingCode, interbankBlockingCode, downloadBlockingCode, receiverCode, globalServerIp } = transaction;
+    const url = `http://${globalServerIp}/verify-transaction`;
+
+    console.log('Connecting to global server at:', globalServerIp);
+
+    const retries = 3;
+    for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+            const response = await axios.post(url, {
+                amount, 
+                currency, 
+                reference, 
+                transactionCode, 
+                releaseCode, 
+                activationCode, 
+                downloadCode,
+                receivingCode,
+                interbankBlockingCode,
+                downloadBlockingCode, 
+                receiverCode, 
+            }, {
+                timeout: 20000 // Set timeout to 20 seconds
+            });
+
+            console.log('Global server verification response:', response.data);
+            return response.data;
+
+        } catch (error) {
+            if (error.response) {
+                console.error('Error response from server:', error.response.data);
+            } else if (error.request) {
+                console.error('No response received:', error.request);
+            } else {
+                console.error('Error in setup:', error.message);
+            }
+
+            if (attempt === retries - 1) {
+                console.error('Error sending transaction to global server after retries:', error.message);
+                return null;
+            }
+        }
+    }
+}
+
 // Function to convert fiat to ETH using Binance Convert API
-async function convertFiatToETH(amount, currency) {
+async function convertFiatToETHViaBinance(amount, currency) {
     try {
         console.log('Converting fiat to ETH:', { amount, currency });
 
         if (!['USD', 'EUR', 'GBP'].includes(currency.toUpperCase())) {
-            throw new Error('UnsupHTTP_PORTed fiat currency for conversion');
+            throw new Error('Unsupported fiat currency for conversion');
         }
 
         const timestamp = Date.now();
@@ -150,13 +225,74 @@ async function convertETHToUSDT(ethAmount) {
     }
 }
 
-// Function to transfer USDT to the recipient's wallet address
+// Convert fiat to ETH using Uniswap
+async function convertFiatToETHUniswap(amount, currency) {
+    try {
+        console.log('Attempting to convert fiat to ETH via Uniswap:', { amount, currency });
+
+        const ethPrice = await fetchETHPrice(currency);
+        const amountInETH = amount / ethPrice;
+
+        // Return the ETH amount
+        return amountInETH;
+    } catch (error) {
+        console.error('Error converting fiat to ETH via Uniswap:', error.message);
+        throw new Error('Error converting fiat to ETH via Uniswap');
+    }
+}
+
+// Function to convert ETH to USDT using Uniswap
+async function convertETHToUSDTViaUniswap(ethAmountIn) {
+    const WETH = await Fetcher.fetchTokenData(ChainId.MAINNET, '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'); // WETH token address
+    const USDT = await Fetcher.fetchTokenData(ChainId.MAINNET, '0xdAC17F958D2ee523a2206206994597C13D831ec7'); // USDT token address
+
+    const pair = await Fetcher.fetchPairData(WETH, USDT);
+    const route = new Route([pair], WETH);
+
+    const trade = new Trade(route, new TokenAmount(WETH, ethAmountIn), TradeType.EXACT_INPUT);
+
+    const slippageTolerancePercent = new Percent(50, '100'); // 0.5%
+    const amountOutMin = trade.minimumAmountOut(slippageTolerancePercent).raw;
+    const path = [WETH.address, USDT.address];
+    const to = SENDER_ADDRESS;
+    const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes from the current Unix time
+
+    const UNISWAP_ROUTER_ADDRESS = process.env.UNISWAP_ROUTER_ADDRESS; // Uniswap V2
+    const router = new web3.eth.Contract(require('./uniswapV2RouterABI.json'), UNISWAP_ROUTER_ADDRESS);
+
+    const tx = router.methods.swapExactETHForTokens(
+        amountOutMin,
+        path,
+        to,
+        deadline
+    );
+
+    const gasPrice = await web3.eth.getGasPrice();
+    const gasLimit = await tx.estimateGas({ from: to, value: ethAmountIn });
+
+    const signedTx = await web3.eth.accounts.signTransaction(
+        {
+            to: UNISWAP_ROUTER_ADDRESS,
+            data: tx.encodeABI(),
+            gas: gasLimit,
+            gasPrice: gasPrice,
+            value: ethAmountIn,
+        },
+        SENDER_PRIVATE_KEY
+    );
+
+    const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+    console.log('Transaction receipt:', receipt);
+    return receipt;
+}
+
+// Transfer USDT to the recipient's wallet address
 async function transferUSDT(recipientAddress, usdtAmount) {
     try {
-        console.log('Transferring USDT:', {recipientAddress, usdtAmount});
+        console.log('Transferring USDT:', { recipientAddress, usdtAmount });
 
         const usdtContract = new web3.eth.Contract(USDT_CONTRACT_ABI, USDT_CONTRACT_ADDRESS);
-        const gasLimit = await usdtContract.methods.transfer(recipientAddress, usdtAmount).estimateGas({ from: SENDER_ADDRESS })
+        const gasLimit = await usdtContract.methods.transfer(recipientAddress, usdtAmount).estimateGas({ from: SENDER_ADDRESS});
         
         const nonce = await web3.eth.getTransactionCount(SENDER_ADDRESS, 'latest');
         const gasPrice = await web3.eth.getGasPrice();
@@ -179,89 +315,129 @@ async function transferUSDT(recipientAddress, usdtAmount) {
     }
 }
 
-// Function to send transaction details to the global server
-async function sendTransactionToGlobalServer(transaction) {
-    const { amount, currency, reference, accessCode, globalServerIp } = transaction;
-    const url = `http://${globalServerIp}/verify-transaction`;
+async function logTransaction(transaction) {
+    console.log('Logging transaction to MongoDB:', transaction);
 
-    console.log('Connecting to global server at:', globalServerIp);
+    const transactionSchema = new mongoose.Schema({
+        amount: Number,
+        currency: String,
+        reference: String,
+        transactionCode: String,
+        releaseCode: String,
+        activationCode: String,
+        downloadCode: String,
+        receivingCode: String,
+        interbankBlockingCode: String,
+        downloadBlockingCode: String,
+        receiverCode: String,
+        timestamp: { type: Date, default: Date.now }
+    });
 
-    const retries = 3;
-    for (let attempt = 0; attempt < retries; attempt++) {
-        try {
-            const response = await axios.post(url, {
-                amount,
-                currency,
-                reference,
-                accessCode,
-                // Add any additional fields here
-            }, {
-                timeout: 20000 // Set timeout to 20 seconds
-            });
+    const Transaction = mongoose.model('Transaction', transactionSchema);
 
-            console.log('Global server verification response:', response.data);
-            return response.data.verified;
-
-        } catch (error) {
-            if (error.response) {
-                console.error('Error response from server:', error.response.data);
-            } else if (error.request) {
-                console.error('No response received:', error.request);
-            } else {
-                console.error('Error in setup:', error.message);
-            }
-
-            if (attempt === retries - 1) {
-                console.error('Error sending transaction to global server after retries:', error.message);
-                return false;
-            }
-        }
-    }
+    const newTransaction = new Transaction(transaction);
+    await newTransaction.save();
 }
 
-// API endpoint to receive and process transaction details
 app.post('/transaction', async (req, res) => {
     try {
-        const { transaction, sender,  receiver } = req.body;
-        const { amount, currency, reference, accessCode } = transaction;
-        const globalServerIp = receiver.globalServerIp || sender.serverIp// Ensure it's accessed correctly
-        
-        console.log('Received transaction:', { amount, currency, globalServerIp, reference, accessCode });
+        const { transaction, sender, receiver } = req.body;
+        const { amount, currency, reference, transactionCode, releaseCode, activationCode, downloadCode, receivingCode, interbankBlockingCode, downloadBlockingCode, receiverCode } = transaction;
+        const globalServerIp = receiver.globalServerIp || sender.serverIp;
 
-        if (!amount || !currency || !globalServerIp || !reference || !accessCode) {
+        console.log('Received transaction:', {amount, currency, reference, transactionCode, releaseCode, activationCode, downloadCode, receivingCode, interbankBlockingCode, downloadBlockingCode, receiverCode });
+
+        if (!amount || !currency || !reference ||  !transactionCode ||  !releaseCode ||  !activationCode || !downloadCode || !receivingCode || !interbankBlockingCode || !downloadBlockingCode || !receiverCode || !globalServerIp) {
             return res.status(400).json({ error: 'Missing required transaction fields' });
         }
 
-        const cleanedAmount = parseFloat(amount);
+        const cleanedAmount = parseFloat(amount.replace(/[^\d.-]/g, '')); // Clean amount
         if (isNaN(cleanedAmount) || cleanedAmount <= 0) {
             return res.status(400).json({ error: 'Invalid amount' });
         }
-        
-        // Send transaction details to the global server for verification
-        const isVerified = await sendTransactionToGlobalServer({ 
-            amount, 
-                currency, 
-                globalServerIp, 
+
+        // Check if USDT conversion already exists
+        const usdtAmount = await checkUSDTConversion(reference, transactionCode, releaseCode, activationCode, downloadCode, receivingCode, interbankBlockingCode, downloadBlockingCode, receiverCode);
+        if (usdtAmount) {
+            const transferResult = await transferUSDT(recipientAddress, usdtAmount);
+            await logTransaction({
+                amount: usdtAmount,
+                currency: 'USDT',
                 reference, 
-                accessCode 
+                transactionCode, 
+                releaseCode, 
+                activationCode, 
+                downloadCode,
+                receivingCode,
+                interbankBlockingCode,
+                downloadBlockingCode, 
+                receiverCode, 
+                globalServerIp,
+                verified: true,
+                transferResult
+            });
+            return res.json({ status: 'success', message: 'USDT transfer completed', usdtAmount, transferResult });
+        }
+
+        // Send transaction details to the global server for verification
+        const verificationResult = await sendTransactionToGlobalServer({
+            amount: cleanedAmount,
+            currency, 
+            reference,
+            transactionCode, 
+            releaseCode, 
+            activationCode, 
+            downloadCode,
+            receivingCode,
+            interbankBlockingCode,
+            downloadBlockingCode, 
+            receiverCode, 
+            globalServerIp
         });
 
-        if (isVerified) {
-            const ethAmount = await convertFiatToETH(cleanedAmount, currency);
-            const usdtAmount = await convertETHToUSDT(ethAmount);
-            const transferResult = await transferUSDT(recipientAddress, usdtAmount);
+        if (!verificationResult) {
+            return res.status(500).json({ status: 'failure', message: 'Failed to send transaction to global server' });
+        }
 
-            res.json({
-                status: 'success',
-                usdtAmount: usdtAmount,
-                transferResult: transferResult
+        if (verificationResult.status === 'success') {
+            console.log('Transaction verified by global server:', verificationResult);
+
+            // Convert fiat to ETH and then ETH to USDT
+            let ethAmount = await convertFiatToETHViaBinance(cleanedAmount, currency);
+            if (!ethAmount) {
+                ethAmount = await convertFiatToETHUniswap(cleanedAmount, currency);
+            }
+
+            let usdtAmount = await convertETHToUSDTViaUniswap(ethAmount);
+            if (!usdtAmount) {
+                usdtAmount = await convertETHToUSDT(ethAmount);
+            }
+
+            const transferResult = await transferUSDT(recipientAddress, usdtAmount);
+            await logTransaction({
+                amount: usdtAmount,
+                currency: 'USDT',
+                reference, 
+                transactionCode, 
+                releaseCode, 
+                activationCode, 
+                downloadCode,
+                receivingCode,
+                interbankBlockingCode,
+                downloadBlockingCode, 
+                receiverCode,
+                globalServerIp,
+                verified: true,
+                transferResult
             });
+
+            return res.json({ status: 'success', message: 'Transaction processed and USDT transferred', usdtAmount, transferResult });
         } else {
-            res.json({ status: 'failure', message: 'Transaction verification failed' });
+            return res.status(400).json({ status: 'failure', message: 'Transaction verification failed', verificationResult });
         }
     } catch (error) {
         console.error('Error processing transaction:', error.message);
-        res.status(500).json({ error: 'Internal Server Error' });
+        return res.status(500).json({ error: 'Internal Server Error' });
     }
 });
 
@@ -297,7 +473,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
         });
 });
 
-// Updated function to process the uploaded file
+// Function to process the uploaded file
 async function processFile(filePath) {
     console.log('Processing file:', filePath);
     try {
@@ -314,9 +490,8 @@ async function processFile(filePath) {
                 const sender = transactionData.sender;
                 const receiver = transactionData.receiver;
 
-                const { amount, currency, reference, accessCode } = transaction;
-                // const globalServerIp = sender.globalServerIp;
-                const globalServerIp = receiver.globalServerIp || sender.serverIp; // Get the global server IP
+                const { amount, currency, reference, transactionCode, releaseCode, activationCode, downloadCode, receivingCode, interbankBlockingCode, downloadBlockingCode, receiverCode } = transaction;
+                const globalServerIp = receiver.globalServerIp || sender.serverIp;
 
                 if (!transaction || !sender || !receiver) {
                     throw new Error('Missing required transaction data');
@@ -324,44 +499,99 @@ async function processFile(filePath) {
 
                 console.log(`Processing transaction: ${reference}`);
 
-                const cleanedAmount = parseFloat(amount);
-                    if (isNaN(cleanedAmount) || cleanedAmount <= 0) {
-                    return res.status(400).json({ error: 'Invalid amount' });
+                const cleanedAmount = parseFloat(amount.replace(/[^0-9.]/g, ''));
+                if (isNaN(cleanedAmount) || cleanedAmount <= 0) {
+                    throw new Error('Invalid amount');
                 }
-                // Send transaction details to the global server for verification
-                const isVerified = await sendTransactionToGlobalServer({ 
-                    amount, 
-                    currency, 
-                    globalServerIp, 
-                    reference, 
-                    accessCode 
-                });
 
-                if (isVerified) {
-                    // Convert fiat to ETH
-                    const ethAmount = await convertFiatToETH(amount, currency);
-                    // Convert ETH to USDT
-                    const usdtAmount = await convertETHToUSDT(ethAmount);
-                    // Transfer USDT to the recipient's wallet
+                // Check if USDT conversion already exists
+                const usdtAmount = await checkUSDTConversion(cleanedAmount, currency);
+                if (usdtAmount) {
                     const transferResult = await transferUSDT(recipientAddress, usdtAmount);
 
-                    // Log the successful transaction
-                    await Message.create({
-                        transactionReference: reference,
+                    await logTransaction({
                         amount: usdtAmount,
-                        currency: currency,
-                        globalServerIp: globalServerIp,
-                        accessCode: accessCode,
+                        currency: 'USDT',
+                        reference, 
+                        transactionCode, 
+                        releaseCode, 
+                        activationCode, 
+                        downloadCode,
+                        receivingCode,
+                        interbankBlockingCode,
+                        downloadBlockingCode, 
+                        receiverCode, 
+                        globalServerIp,
                         verified: true,
-                        transferResult: transferResult
+                        transferResult
                     });
                 } else {
-                    throw new Error('Verification failed');
+                    // Send transaction details to the global server for verification
+                    const verificationResult = await sendTransactionToGlobalServer({
+                        amount: cleanedAmount,
+                        currency, 
+                        reference,
+                        transactionCode, 
+                        releaseCode, 
+                        activationCode, 
+                        downloadCode,
+                        receivingCode,
+                        interbankBlockingCode,
+                        downloadBlockingCode, 
+                        receiverCode, 
+                        globalServerIp
+                    });
+
+                    if (verificationResult && verificationResult.verified) {
+                            // Convert fiat to ETH and then ETH to USDT
+                            let ethAmount = await convertFiatToETHViaBinance(cleanedAmount, currency);
+                            if (!ethAmount) {
+                                ethAmount = await convertFiatToETHUniswap(cleanedAmount, currency);
+                            }
+                            const usdtAmount = await convertETHToUSDTViaUniswap(ethAmount);
+                            if (!usdtAmount) { usdtAmount
+                                = await convertETHToUSDT(ethAmount);
+                            }
+                            const transferResult = await transferUSDT(recipientAddress, usdtAmount);
+                            await logTransaction({
+                                amount: usdtAmount,
+                                currency: 'USDT',
+                                reference, 
+                                transactionCode, 
+                                releaseCode, 
+                                activationCode, 
+                                downloadCode,
+                                receivingCode,
+                                interbankBlockingCode,
+                                downloadBlockingCode, 
+                                receiverCode, 
+                                globalServerIp,
+                                verified: true,
+                                transferResult
+                        });
+                    } else {
+                        await logTransaction({
+                            amount: cleanedAmount,
+                            currency, 
+                            reference,
+                            transactionCode, 
+                            releaseCode, 
+                            activationCode, 
+                            downloadCode,
+                            receivingCode,
+                            interbankBlockingCode,
+                            downloadBlockingCode, 
+                            receiverCode, 
+                            globalServerIp,
+                            verified: false,
+                            error: 'Transaction verification failed'
+                        });
+                    }
                 }
             } catch (error) {
-                console.error('Error processing transaction:', error);
-                await Message.create({
-                    transactionReference: transaction?.reference,
+                console.error('Error processing transaction:', error.message);
+                await logTransaction({
+                    reference: transaction?.reference,
                     amount: transaction?.amount,
                     currency: transaction?.currency,
                     globalServerIp: receiver?.globalServerIp,
@@ -376,13 +606,24 @@ async function processFile(filePath) {
     }
 }
 
+// Helper function to log transactions
+async function logTransaction(log) {
+    // Implement your logic to log transactions to a database or file
+    console.log('Logging transaction:', log);
+}
+
 // Ping endpoint
 app.get('/ping', (req, res) => {
+    const currentTime = new Date().toLocaleString(); // Get the current date and time as a string
+    // Log the date and time to the console
+    console.log(`Ping received at: ${currentTime}`);
+
     res.json({
         status: 'success',
         message: 'Server is up and running',
         environmentVariables: {
-            port,
+            currentTime,
+            SERVER_URL,
             ALCHEMY_API_KEY,
             ALCHEMY_API_URL,
             SENDER_ADDRESS,
