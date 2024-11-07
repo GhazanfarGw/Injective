@@ -37,19 +37,6 @@ const senderBankDetails = {
     referenceMessage: "UKAB-14203477-KG028"
 };
 
-// Show sender and receiver details when the server starts
-app.listen(port, () => {
-    logger.info("Server started on port " + port);
-    console.log(`Server running on port ${PORT}`);
-    
-    // Display sender and receiver details
-    console.log("Sender Bank Details:");
-    console.log(senderBankDetails);
-
-    console.log("Receiver Bank Details:");
-    console.log(receiverBankDetails);
-});
-
 // Endpoint to initiate the transfer
 app.post('/transfer', async (req, res) => {
     const { amount, currency, beneficiaryBankDetails, transactionId, accountId } = req.body;
@@ -88,4 +75,16 @@ app.post('/transfer', async (req, res) => {
         logger.error('Error during transfer:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+// Show sender and receiver details when the server starts
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    
+    // Display sender and receiver details
+    console.log("Sender Bank Details:");
+    console.log(senderBankDetails);
+
+    console.log("Receiver Bank Details:");
+    console.log(receiverBankDetails);
 });
