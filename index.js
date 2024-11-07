@@ -5,7 +5,7 @@ const { validateTransfer } = require('./utils/validator');
 require('dotenv').config(); // To load environment variables from .env file
 
 const app = express();
-const port = 3000;
+const PORT = process.env.PORT;
 
 app.use(express.json());
 
@@ -40,7 +40,7 @@ const senderBankDetails = {
 // Show sender and receiver details when the server starts
 app.listen(port, () => {
     logger.info("Server started on port " + port);
-    console.log("Server started on port " + port);
+    console.log(`Server running on port ${PORT}`);
     
     // Display sender and receiver details
     console.log("Sender Bank Details:");
