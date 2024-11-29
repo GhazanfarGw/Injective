@@ -125,7 +125,7 @@ let chalk;
   const keystorePassword = process.env.KEYSTORE_PASSWORD;
   const tokenContractAddress = process.env.USDT_CONTRACT_ADDRESS;
 
-  const alchemyApiUrl = `wss://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+  const alchemyApiUrl = `wss://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
   const web3 = createAlchemyWeb3(alchemyApiUrl);
 
   const logWithColor = (message, color = "green") => {
