@@ -125,7 +125,6 @@ let chalk;
       // Simulate converting crypto to fiat
       const fiatAmount = await convertCryptoToFiat(cryptoAmount, cryptoCurrency);
 
-
       // Simulate sending funds to the bank
       const bankTransaction = await sendToBank(fiatAmount);
       
@@ -171,6 +170,36 @@ let chalk;
     }
   }
 
+  // Ping server details endpoint
+  app.get("/ping", (req, res) => {
+    const serverDetails = {
+      status: "success",
+      message: "Server is running",
+      date: new Date().toISOString(),
+      environment: {
+        ALCHEMY_API_URL: process.env.ALCHEMY_API_URL,
+        MASTER_WALLET_ADDRESS: process.env.MASTER_WALLET_ADDRESS,
+        BANK_BALANCE: process.env.BANK_BALANCE,
+        BANK_DETAILS: {
+          AccountName: "Kenneth C. Edelin Esq IOLTA",
+          AccountNumber: "3830-1010-2615",
+          RoutingNumber: "031202084",
+          SWIFTCodeUSD: "BOFAUS3N",
+          SWIFTCodeForeignCurrency: "BOFAUS3N",
+          BankName: "Bank of America",
+          BankAddress: "Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103",
+          BankOfficer: "Brian Martinez",
+          BankOfficerAddress: "Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103",
+          BankOfficerTelephone: "215-336-2623, 215-446-9589",
+          BankOfficerEmail: "Bmartinez25@bofa.com",
+          BankBalance: process.env.BANK_BALANCE,
+        },
+        PORT: process.env.PORT || 3000,
+      },
+    };
+    res.json(serverDetails);
+  });
+
   // Start server and log details
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, async () => {
@@ -178,6 +207,7 @@ let chalk;
     await logServerDetails();
   });
 })();
+
 
 
 // let chalk;
