@@ -172,7 +172,7 @@ let chalk;
   }
 
   // Start server and log details
-  const PORT = process.env.PORT || 4000;
+  const PORT = process.env.PORT || 3000;
   app.listen(PORT, async () => {
     logWithColor(`Server is running on port ${PORT}`, "yellow");
     await logServerDetails();
