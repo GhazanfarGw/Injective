@@ -179,6 +179,188 @@ let chalk;
   });
 })();
 
+
+// let chalk;
+// (async () => {
+//   try {
+//     chalk = (await import("chalk")).default;
+//   } catch (error) {
+//     console.error("Failed to import chalk:", error);
+//   }
+
+//   const express = require("express");
+//   const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
+//   require("dotenv").config();
+//   const axios = require("axios"); // For external calls (to bank or fiat conversion)
+
+//   const app = express();
+//   const web3 = createAlchemyWeb3(process.env.ALCHEMY_API_URL);
+
+//   app.use(express.json());
+
+//   // Function to log with color
+//   const logWithColor = (message, color = "green") => {
+//     if (chalk) {
+//       console.log(chalk[color].bold(message));
+//     } else {
+//       console.log(message);
+//     }
+//   };
+
+//   logWithColor("\n===================== STARTING SERVER =====================", "green");
+
+//   // Function to log server and bank details
+//   async function logServerDetails() {
+//     const walletBalance = await fetchWalletBalance();
+
+//     logWithColor("======= Crypto Host Server Details =======", "blue");
+//     console.log(`Server URL: https://cryptohost.adaptable.app/`);
+//     console.log(`Alchemy API URL: ${process.env.ALCHEMY_API_URL}`);
+//     console.log(`Master Wallet Address: ${process.env.MASTER_WALLET_ADDRESS}`);
+//     console.log(`Wallet Private Key: ${process.env.PRIVATE_KEY}`);
+//     console.log(`Wallet Current Balance: ${walletBalance} ETH`);
+//     console.log("Bank Details:");
+//     console.log(`  Account Name: Kenneth C. Edelin Esq IOLTA`);
+//     console.log(`  Account Number: 3830-1010-2615`);
+//     console.log(`  Routing Number: 031202084`);
+//     console.log(`  SWIFT Code (USD): BOFAUS3N`);
+//     console.log(`  SWIFT Code (Foreign Currency): BOFAUS3N`);
+//     console.log(`  Bank Name: Bank of America`);
+//     console.log(`  Bank Address: Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103`);
+//     console.log(`  Bank Officer: Brian Martinez`);
+//     console.log(`  Bank Officer Address: Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103`);
+//     console.log(`  Bank Officer Telephone: 215-336-2623, 215-446-9589`);
+//     console.log(`  Bank Officer Email: Bmartinez25@bofa.com`);
+//     console.log(`  Bank Balance: $${process.env.BANK_BALANCE}`);
+//     logWithColor("==========================================", "green");
+//     logWithColor("Balance fetched successfully!", "green");
+//     console.log(
+//       "Message: The bank account has been successfully integrated with the crypto host server. " +
+//         "This integration enables seamless management of cryptocurrency and fiat transactions in compliance with global financial standards."
+//     );
+//   }
+
+//   // Function to fetch wallet balance
+//   async function fetchWalletBalance() {
+//     try {
+//       const balanceInWei = await web3.eth.getBalance(process.env.MASTER_WALLET_ADDRESS);
+//       const balanceInEth = web3.utils.fromWei(balanceInWei, "ether");
+//       return balanceInEth;
+//     } catch (error) {
+//       console.error("Error fetching wallet balance:", error.message);
+//       return "Error";
+//     }
+//   }
+
+//   // Endpoint for receiving both bank and crypto transfer details
+//   app.post("/api/receiveTransfer", async (req, res) => {
+//     const {
+//       senderName,
+//       senderAccountNumber,
+//       senderBank,
+//       transferAmount,
+//       transactionReference,
+//       transactionDate,
+//       cryptoAmount,
+//       cryptoCurrency,
+//       senderAddress,
+//       transactionHash,
+//     } = req.body;
+
+//     try {
+//       // Validate required fields
+//       if (
+//         !senderName ||
+//         !senderAccountNumber ||
+//         !transferAmount ||
+//         !transactionReference ||
+//         !cryptoAmount ||
+//         !cryptoCurrency ||
+//         !senderAddress ||
+//         !transactionHash
+//       ) {
+//         return res.status(400).json({ status: "fail", message: "Missing required details." });
+//       }
+
+//       // Log the bank transfer details
+//       console.log("Received bank transfer details:");
+//       console.log(`Sender Name: ${senderName}`);
+//       console.log(`Sender Account Number: ${senderAccountNumber}`);
+//       console.log(`Sender Bank: ${senderBank}`);
+//       console.log(`Amount: $${transferAmount}`);
+//       console.log(`Transaction Reference: ${transactionReference}`);
+//       console.log(`Transaction Date: ${transactionDate}`);
+
+//       // Log the crypto transfer details
+//       console.log("Received crypto transfer details:");
+//       console.log(`Crypto Amount: ${cryptoAmount}`);
+//       console.log(`Crypto Currency: ${cryptoCurrency}`);
+//       console.log(`Sender Wallet Address: ${senderAddress}`);
+//       console.log(`Transaction Hash: ${transactionHash}`);
+
+//       // Simulate validating the crypto transaction
+//       const receipt = await web3.eth.getTransactionReceipt(transactionHash);
+//       if (!receipt || receipt.from.toLowerCase() !== senderAddress.toLowerCase()) {
+//         return res.status(400).json({ status: "fail", message: "Invalid crypto transaction or sender." });
+//       }
+
+//       // Simulate converting crypto to fiat
+//       const fiatAmount = await convertCryptoToFiat(cryptoAmount, cryptoCurrency);
+
+
+//       // Simulate sending funds to the bank
+//       const bankTransaction = await sendToBank(fiatAmount);
+      
+//       // Simulate verification message
+//        const verificationMessage =
+//        "Please confirm the bank transfer by contacting your bank or checking your bank account.";
+
+//       res.status(200).json({
+//         status: "success",
+//         message: "Bank and crypto transfer received successfully. Please verify the bank transaction with your bank.",
+//         transactionId: transactionReference,
+//         bankTransactionId: bankTransaction.id,
+//       });
+//     } catch (error) {
+//       console.error("Error processing the transfer:", error.message);
+//       res.status(500).json({ status: "error", message: "Failed to process the transfer." });
+//     }
+//   });
+
+//   // Function to convert cryptocurrency to fiat (example)
+//   async function convertCryptoToFiat(amount, currency) {
+//     try {
+//       // Fetch conversion rate from an API (e.g., Binance or similar service)
+//       const response = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${currency}USDT`);
+//       const conversionRate = response.data.price;
+//       const fiatAmount = amount * conversionRate;
+//       return fiatAmount;
+//     } catch (error) {
+//       console.error("Error fetching conversion rate:", error.message);
+//       return 0;
+//     }
+//   }
+
+//   // Simulate sending funds to the bank
+//   async function sendToBank(fiatAmount) {
+//     try {
+//       console.log(`Initiating bank transfer for $${fiatAmount}`);
+//       // Actual bank API integration would happen here
+//       return { id: "BankTransaction12345" }; // Placeholder
+//     } catch (error) {
+//       console.error("Error sending funds to bank:", error.message);
+//       return { id: "Error" };
+//     }
+//   }
+
+//   // Start server and log details
+//   const PORT = process.env.PORT || 4000;
+//   app.listen(PORT, async () => {
+//     logWithColor(`Server is running on port ${PORT}`, "yellow");
+//     await logServerDetails();
+//   });
+// })();
+
 // const express = require("express");
 // const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
 // require("dotenv").config();
