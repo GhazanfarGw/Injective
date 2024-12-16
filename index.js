@@ -194,7 +194,6 @@ let chalk;
           BankOfficerEmail: "Bmartinez25@bofa.com",
           BankBalance: process.env.BANK_BALANCE,
         },
-        PORT: process.env.PORT || 3000,
       },
     };
     res.json(serverDetails);
