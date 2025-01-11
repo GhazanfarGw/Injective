@@ -207,7 +207,7 @@ let chalk;
   // });
 
   app.listen(80, '0.0.0.0', async () => {
-    console.log("Server is running on port 22");
+    console.log("Server is running on port 80");
     await logServerDetails();
 });
 
