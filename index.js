@@ -200,11 +200,17 @@ let chalk;
   });
 
   // Start server and log details
-  const PORT = process.env.PORT || 21;
-  app.listen(PORT, async () => {
-    logWithColor(`Server is running on port ${PORT}`, "yellow");
+  // const PORT = process.env.PORT || 21;
+  // app.listen(PORT, async () => {
+  //   logWithColor(`Server is running on port ${PORT}`, "yellow");
+  //   await logServerDetails();
+  // });
+
+  app.listen(80, '0.0.0.0', async () => {
+    console.log("Server is running on port 22");
     await logServerDetails();
-  });
+});
+
 })();
 
 
