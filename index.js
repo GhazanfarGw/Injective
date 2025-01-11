@@ -70,6 +70,11 @@ let chalk;
     }
   }
 
+  // Keep the process alive with periodic logs
+  setInterval(() => {
+    console.log("App is alive");
+  }, 10000); // Log every 10 seconds
+
   // Endpoint for receiving both bank and crypto transfer details
   app.post("/api/receiveTransfer", async (req, res) => {
     const {
@@ -127,10 +132,6 @@ let chalk;
 
       // Simulate sending funds to the bank
       const bankTransaction = await sendToBank(fiatAmount);
-      
-      // Simulate verification message
-       const verificationMessage =
-       "Please confirm the bank transfer by contacting your bank or checking your bank account.";
 
       res.status(200).json({
         status: "success",
@@ -144,32 +145,6 @@ let chalk;
     }
   });
 
-  // Function to convert cryptocurrency to fiat (example)
-  async function convertCryptoToFiat(amount, currency) {
-    try {
-      // Fetch conversion rate from an API (e.g., Binance or similar service)
-      const response = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${currency}USDT`);
-      const conversionRate = response.data.price;
-      const fiatAmount = amount * conversionRate;
-      return fiatAmount;
-    } catch (error) {
-      console.error("Error fetching conversion rate:", error.message);
-      return 0;
-    }
-  }
-
-  // Simulate sending funds to the bank
-  async function sendToBank(fiatAmount) {
-    try {
-      console.log(`Initiating bank transfer for $${fiatAmount}`);
-      // Actual bank API integration would happen here
-      return { id: "BankTransaction12345" }; // Placeholder
-    } catch (error) {
-      console.error("Error sending funds to bank:", error.message);
-      return { id: "Error" };
-    }
-  }
-
   // Ping server details endpoint
   app.get("/ping", (req, res) => {
     const serverDetails = {
@@ -180,37 +155,16 @@ let chalk;
         ALCHEMY_API_URL: process.env.ALCHEMY_API_URL,
         MASTER_WALLET_ADDRESS: process.env.MASTER_WALLET_ADDRESS,
         BANK_BALANCE: process.env.BANK_BALANCE,
-        BANK_DETAILS: {
-          AccountName: "Kenneth C. Edelin Esq IOLTA",
-          AccountNumber: "3830-1010-2615",
-          RoutingNumber: "031202084",
-          SWIFTCodeUSD: "BOFAUS3N",
-          SWIFTCodeForeignCurrency: "BOFAUS3N",
-          BankName: "Bank of America",
-          BankAddress: "Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103",
-          BankOfficer: "Brian Martinez",
-          BankOfficerAddress: "Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103",
-          BankOfficerTelephone: "215-336-2623, 215-446-9589",
-          BankOfficerEmail: "Bmartinez25@bofa.com",
-          BankBalance: process.env.BANK_BALANCE,
-        },
       },
     };
     res.json(serverDetails);
   });
 
   // Start server and log details
-  // const PORT = process.env.PORT || 21;
-  // app.listen(PORT, async () => {
-  //   logWithColor(`Server is running on port ${PORT}`, "yellow");
-  //   await logServerDetails();
-  // });
-
-  app.listen(80, '0.0.0.0', async () => {
+  app.listen(80, "0.0.0.0", async () => {
     console.log("Server is running on port 80");
     await logServerDetails();
-});
-
+  });
 })();
 
 
