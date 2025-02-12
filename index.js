@@ -188,9 +188,9 @@ let chalk;
   });
 
   // Run balance check when server starts
-  app.listen(4000, "0.0.0.0", async () => {
+  app.listen(80, "0.0.0.0", async () => {
     logWithColor("\n===================== SERVER STARTED =====================", "green");
-    console.log("Server is running on port 80");
+    console.log("Server is running on port 54.173.144.230");
     await logServerDetails();
   });
 
