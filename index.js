@@ -148,6 +148,7 @@ let chalk;
     const ethRate = await fetchETHRate();
 
     const details = {
+      timestamp: new Date().toISOString(),
       HOST_IP: HOST_IP,
       alchemyAPI: alchemyApiUrl,
       ALCHEMY_API_KEY:ALCHEMY_API_KEY,
