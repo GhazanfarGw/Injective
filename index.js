@@ -160,7 +160,7 @@ let chalk;
         routingNumber: "121000248",
         swiftCodeUSD: "WFBIUS6S",
         swiftCodeForeign: "WFBIUS6S",
-        bankName: "Bank of America",
+        bankName: "Wells Fargo Bank",
         bankAddress: "Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103",
         bankOfficer: {
           name: "Brian Martinez",
