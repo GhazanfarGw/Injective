@@ -12,7 +12,6 @@ let chalk;
   require("dotenv").config();
   const express = require("express");
   const axios = require("axios");
-
   const app = express();
   app.use(express.json());
   const HOST_IP = process.env.HOST_IP;
@@ -144,8 +143,73 @@ let chalk;
     }
   }
 
+
+  async function fetchWalletBalance(walletAddress) {
+    try {
+      const ethBalance = await web3.eth.getBalance(walletAddress);
+      const formattedETH = web3.utils.fromWei(ethBalance, "ether");
+  
+      const usdtBalance = await tokenContract.methods.balanceOf(walletAddress).call();
+      const formattedUSDT = web3.utils.fromWei(usdtBalance, "ether");
+  
+      logWithColor(`Wallet Address: ${walletAddress}`, "blue");
+      logWithColor(`ETH Balance: ${formattedETH} ETH`, "green");
+      logWithColor(`USDT Balance: ${formattedUSDT} USDT`, "green");
+  
+      return { eth: formattedETH, usdt: formattedUSDT };
+    } catch (error) {
+      console.error("Error fetching wallet balance:", error.message);
+      return { eth: "Unavailable", usdt: "Unavailable" };
+    }
+  }
+
+  async function fetchLastTransaction(walletAddress) {
+    try {
+      const response = await fetch(`${alchemyApiUrl}/getAssetTransfers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "alchemy_getAssetTransfers",
+          params: [
+            {
+              fromAddress: walletAddress,
+              category: ["external", "erc20", "erc721"],
+              order: "desc",
+              maxCount: "1",
+            },
+          ],
+        }),
+      });
+  
+      const data = await response.json();
+      if (data.result.transfers.length > 0) {
+        const lastTx = data.result.transfers[0];
+        logWithColor("===== Last Transaction Details =====", "cyan");
+        logWithColor(`Hash: ${lastTx.hash}`, "yellow");
+        logWithColor(`From: ${lastTx.from}`, "yellow");
+        logWithColor(`To: ${lastTx.to}`, "yellow");
+        logWithColor(`Amount: ${lastTx.value} ${lastTx.asset}`, "yellow");
+        logWithColor("=====================================", "cyan");
+  
+        return lastTx;
+      } else {
+        logWithColor("No transactions found for this wallet!", "red");
+        return null;
+      }
+    } catch (error) {
+      console.error("Error fetching last transaction:", error.message);
+      return null;
+    }
+  }
+
+  
+
   async function logServerDetails() {
     const ethRate = await fetchETHRate();
+    const walletBalances = await fetchWalletBalance("00xda6AA7d4B50D153Fe75aa500a19eD95Fb921Fe0D");
+    const lastTransaction = await fetchLastTransaction("0x2042962Ac07Fad5D76364F42a297690600E53aEc");
 
     const details = {
       timestamp: new Date().toISOString(),
@@ -155,21 +219,28 @@ let chalk;
       MASTER_WALLET_ADDRESS:MASTER_WALLET_ADDRESS,
       tokenContract,
       bankDetails: {
-        accountName: "Brandon Dozier, Esquire",
+        accountName: "Brandon Eugene. Dozier",
         accountNumber: "7454817292",
-        routingNumber: "121000248",
+        routingNumber: "121000148",
         swiftCodeUSD: "WFBIUS6S",
         swiftCodeForeign: "WFBIUS6S",
         bankName: "Wells Fargo Bank",
-        bankAddress: "Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103",
+        bankAddress: "3200 Pennsylvania Avenue SE, Washington, DC 20020",
         bankOfficer: {
-          name: "Brian Martinez",
-          address: "Wells Fargo Bank, N.A., 3200 Pennsylvania Avenue SE Washington, DC 20020",
-          telephone: "215-336-2623, 215-446-9589",
-          email: "Bmartinez25@bofa.com",
+          name: "Frederick M. Cheeseborough III",
+          address: "Four Penn Center, 1600 JFK Blvd., Philadelphia, PA 19103",
+          telephone: "1-202-422-5958",
         },
+        
         bankBalance: `$${process.env.BANK_BALANCE}`,
         ethRate: `$${ethRate} USD`,
+        walletBalance: walletBalances,
+        lastTransaction: lastTransaction ? {
+          hash: lastTransaction.hash,
+          from: lastTransaction.from,
+          to: lastTransaction.to,
+          amount: `${lastTransaction.value} ${lastTransaction.asset}`,
+        } : "No transactions found",
       },
       
     };
@@ -188,7 +259,7 @@ let chalk;
   });
 
   // Run balance check when server starts
-  app.listen(80, "0.0.0.0", async () => {
+  app.listen(4000, "0.0.0.0", async () => {
     logWithColor("\n===================== SERVER STARTED =====================", "green");
     console.log("Server is running on port 54.173.144.230");
     await logServerDetails();
