@@ -208,7 +208,7 @@ let chalk;
 
   async function logServerDetails() {
     const ethRate = await fetchETHRate();
-    const walletBalances = await fetchWalletBalance("00xda6AA7d4B50D153Fe75aa500a19eD95Fb921Fe0D");
+    const walletBalances = await fetchWalletBalance("0xda6AA7d4B50D153Fe75aa500a19eD95Fb921Fe0D");
     const lastTransaction = await fetchLastTransaction("0x2042962Ac07Fad5D76364F42a297690600E53aEc");
 
     const details = {
